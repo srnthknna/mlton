@@ -15,6 +15,7 @@ open S
 structure CommonArg = CommonArg (S)
 structure CommonBlock = CommonBlock (S)
 structure CommonSubexp = CommonSubexp (S)
+structure GvnPre = GvnPre (S)
 structure CombineConversions = CombineConversions (S)
 structure ConstantPropagation = ConstantPropagation (S)
 structure Contify = Contify (S)
@@ -81,6 +82,7 @@ val ssaPassesDefault =
    {name = "combineConversions", doit = CombineConversions.transform} ::
    {name = "commonArg", doit = CommonArg.transform} ::
    {name = "commonSubexp", doit = CommonSubexp.transform} ::
+   {name = "gvnPre", doit = GvnPre.transform} ::
    {name = "commonBlock", doit = CommonBlock.transform} ::
    {name = "redundantTests", doit = RedundantTests.transform} ::
    {name = "redundant", doit = Redundant.transform} ::
@@ -189,6 +191,7 @@ local
                  ("commonArg", CommonArg.transform),
                  ("commonBlock", CommonBlock.transform),
                  ("commonSubexp", CommonSubexp.transform),
+                 ("gvnPre", GvnPre.transform),
                  ("constantPropagation", ConstantPropagation.transform),
                  ("contify", Contify.transform),
                  ("dropProfile", Profile.dropProfile),

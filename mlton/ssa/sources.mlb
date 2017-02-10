@@ -51,6 +51,7 @@ local
    common-arg.fun
    common-block.fun
    common-subexp.fun
+   gvn-pre.fun
    global.sig
    global.fun
    multi.sig
