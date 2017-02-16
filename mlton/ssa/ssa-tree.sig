@@ -159,6 +159,7 @@ signature SSA_TREE =
                                var: Var.t option}
 
             val clear: t -> unit (* clear the var *)
+	    val equals: t * t -> bool
             val exp: t -> Exp.t
             val layout: t -> Layout.t
             val prettifyGlobals: t vector -> (Var.t -> string option)
