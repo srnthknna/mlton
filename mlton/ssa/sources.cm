@@ -63,6 +63,7 @@ ssa-transform.sig
 ssa2-transform.sig
 common-arg.fun
 common-block.fun
+gvn-pre.fun
 common-subexp.fun
 global.sig
 global.fun

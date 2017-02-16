@@ -455,6 +455,146 @@ structure Exp =
           | Tuple xs => Var.prettys (xs, global)
           | Var x => Var.toString x
    end
+
+structure ValExp =
+   struct
+      datatype t =
+         VConApp of {con: Con.t,
+                    args: Var.t vector}
+       | VConst of Const.t
+       | VPrimApp of {prim: Type.t Prim.t,
+                     targs: Type.t vector,
+                     args: Var.t vector}
+       | VProfile of ProfileExp.t
+       | VSelect of {tuple: Var.t,
+                    offset: int}
+       | VTuple of Var.t vector
+       | VVar of Var.t
+
+      val unit = VTuple (Vector.new0 ())
+
+      fun foreachVar (e, v) =
+         let
+            fun vs xs = Vector.foreach (xs, v)
+         in
+            case e of
+               VConApp {args, ...} => vs args
+             | VConst _ => ()
+             | VPrimApp {args, ...} => vs args
+             | VProfile _ => ()
+             | VSelect {tuple, ...} => v tuple
+             | VTuple xs => vs xs
+             | VVar x => v x
+         end
+
+      fun replaceVar (e, fx) =
+         let
+            fun fxs xs = Vector.map (xs, fx)
+         in
+            case e of
+               VConApp {con, args} => VConApp {con = con, args = fxs args}
+             | VConst _ => e
+             | VPrimApp {prim, targs, args} =>
+                  VPrimApp {prim = prim, targs = targs, args = fxs args}
+             | VProfile _ => e
+             | VSelect {tuple, offset} =>
+                  VSelect {tuple = fx tuple, offset = offset}
+             | VTuple xs => VTuple (fxs xs)
+             | VVar x => VVar (fx x)
+         end
+
+      fun layout e =
+         let
+            open Layout
+         in
+            case e of
+               VConApp {con, args} =>
+                  seq [Con.layout con, str " ", layoutTuple args]
+             | VConst c => Const.layout c
+             | VPrimApp {prim, targs, args} =>
+                  seq [Prim.layout prim,
+                       if !Control.showTypes
+                          then if 0 = Vector.length targs
+                                  then empty
+                               else Vector.layout Type.layout targs
+                       else empty,
+                       seq [str " ", layoutTuple args]]
+             | VProfile p => ProfileExp.layout p
+             | VSelect {tuple, offset} =>
+                  seq [str "#", Int.layout offset, str " ",
+                       Var.layout tuple]
+             | VTuple xs => layoutTuple xs
+             | VVar x => Var.layout x
+         end
+
+      fun maySideEffect (e: t): bool =
+         case e of
+            VConApp _ => false
+          | VConst _ => false
+          | VPrimApp {prim,...} => Prim.maySideEffect prim
+          | VProfile _ => false
+          | VSelect _ => false
+          | VTuple _ => false
+          | VVar _ => false
+
+      fun varsEquals (xs, xs') = Vector.equals (xs, xs', Var.equals)
+
+      fun equals (e: t, e': t): bool =
+         case (e, e') of
+            (VConApp {con, args}, VConApp {con = con', args = args'}) =>
+               Con.equals (con, con') andalso varsEquals (args, args')
+          | (VConst c, VConst c') => Const.equals (c, c')
+          | (VPrimApp {prim, args, ...},
+             VPrimApp {prim = prim', args = args', ...}) =>
+               Prim.equals (prim, prim') andalso varsEquals (args, args')
+          | (VProfile p, VProfile p') => ProfileExp.equals (p, p')
+          | (VSelect {tuple = t, offset = i}, VSelect {tuple = t', offset = i'}) =>
+               Var.equals (t, t') andalso i = i'
+          | (VTuple xs, VTuple xs') => varsEquals (xs, xs')
+          | (VVar x, VVar x') => Var.equals (x, x')
+          | _ => false
+
+      local
+         val newHash = Random.word
+         val primApp = newHash ()
+         val profile = newHash ()
+         val select = newHash ()
+         val tuple = newHash ()
+         fun hashVars (xs: Var.t vector, w: Word.t): Word.t =
+            Vector.fold (xs, w, fn (x, w) => Word.xorb (w, Var.hash x))
+      in
+         val hash: t -> Word.t =
+            fn VConApp {con, args, ...} => hashVars (args, Con.hash con)
+             | VConst c => Const.hash c
+             | VPrimApp {args, ...} => hashVars (args, primApp)
+             | VProfile p => Word.xorb (profile, ProfileExp.hash p)
+             | VSelect {tuple, offset} =>
+                  Word.xorb (select, Var.hash tuple + Word.fromInt offset)
+             | VTuple xs => hashVars (xs, tuple)
+             | VVar x => Var.hash x
+      end
+
+      val hash = Trace.trace ("SsaTree.Exp.hash", layout, Word.layout) hash
+
+      fun toPretty (e: t, global: Var.t -> string option): string =
+         case e of
+            VConApp {con, args} =>
+               concat [Con.toString con, " ", Var.prettys (args, global)]
+          | VConst c => Const.toString c
+          | VPrimApp {prim, args, ...} =>
+               Layout.toString
+               (Prim.layoutApp (prim, args, fn x =>
+                                case global x of
+                                   NONE => Var.layout x
+                                 | SOME s => Layout.str s))
+          | VProfile p => ProfileExp.toString p
+          | VSelect {tuple, offset} =>
+               concat ["#", Int.toString offset, " ", Var.toString tuple]
+          | VTuple xs => Var.prettys (xs, global)
+          | VVar x => Var.toString x
+   end
+
+
 datatype z = datatype Exp.t
 
 structure Statement =
@@ -485,6 +625,15 @@ structure Statement =
                  Exp.layout exp]
          end
 
+       fun equals (e: t, e': t): bool =
+         case (e, e') of
+            (T {var, ty, exp},
+             T {var = var', ty = ty', exp = exp'}) =>
+               (case (var,var') of
+                (SOME x,SOME x') => Var.equals(x,x')
+               |(NONE,NONE) => true
+               | _ => false) 
+                            andalso Exp.equals (exp, exp') 
       local
          fun make f x =
             T {var = NONE,
@@ -911,6 +1060,20 @@ structure Block =
          val statements = make #statements
          val transfer = make #transfer
       end
+
+      fun varsEquals (xs, xs') = Vector.equals (xs, xs', 
+                                 fn ((a,b),(a',b')) => Var.equals(a,a'))
+
+      fun statementsEquals (xs, xs') = Vector.equals (xs, xs', Statement.equals)
+	
+      fun equals (e: t, e': t): bool =
+         case (e, e') of
+            (T {args, label, statements, transfer},
+            T {args = args', label = label', statements = statements', transfer = transfer'}) =>
+               Label.equals (label, label') andalso
+	       varsEquals (args, args') andalso
+               Transfer.equals (transfer, transfer') andalso
+               statementsEquals (statements, statements')
 
       fun layout (T {label, args, statements, transfer}) =
          let

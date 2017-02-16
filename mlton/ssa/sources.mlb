@@ -50,8 +50,8 @@ local
    ssa2-transform.sig
    common-arg.fun
    common-block.fun
-   common-subexp.fun
    gvn-pre.fun
+   common-subexp.fun
    global.sig
    global.fun
    multi.sig
