@@ -128,30 +128,19 @@ signature SSA_TREE =
             val unit: t
          end
 
-      structure ValExp:
+      structure VExp:
          sig
-            datatype t =
-               VConApp of {args: Var.t vector,
-                          con: Con.t}
-             | VConst of Const.t
-             | VPrimApp of {args: Var.t vector,
-                           prim: Type.t Prim.t,
-                           targs: Type.t vector}
-             | VProfile of ProfileExp.t
-             | VSelect of {offset: int,
-                          tuple: Var.t}
-             | VTuple of Var.t vector
-             | VVar of Var.t
-
-            val equals: t * t -> bool
-            val foreachVar: t * (Var.t -> unit) -> unit
-            val hash: t -> Word.t
-            val layout: t -> Layout.t
-            val maySideEffect: t -> bool
-            val replaceVar: t * (Var.t -> Var.t) -> t
-            val unit: t
+	     datatype t =
+		      VConst of Const.t
+		      | VPrimApp of {args: t list vector,
+				     prim: Type.t Prim.t}
+		      | VVar of Var.t
+				    
+             val equals: t * t -> bool
+             val hash: t -> Word.t
+             val layout: t -> Layout.t
          end
-
+	     
       structure Statement:
          sig
             datatype t = T of {exp: Exp.t,
@@ -159,7 +148,6 @@ signature SSA_TREE =
                                var: Var.t option}
 
             val clear: t -> unit (* clear the var *)
-	    val equals: t * t -> bool
             val exp: t -> Exp.t
             val layout: t -> Layout.t
             val prettifyGlobals: t vector -> (Var.t -> string option)
@@ -233,7 +221,6 @@ signature SSA_TREE =
                      statements: Statement.t vector,
                      transfer: Transfer.t}
 
-            val equals: t * t -> bool	
             val args: t -> (Var.t * Type.t) vector
             val clear: t -> unit
             val label: t -> Label.t

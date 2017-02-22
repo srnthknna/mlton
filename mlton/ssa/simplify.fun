@@ -14,12 +14,12 @@ open S
 
 structure CommonArg = CommonArg (S)
 structure CommonBlock = CommonBlock (S)
-structure GvnPre = GvnPre (S)
 structure CommonSubexp = CommonSubexp (S)
 structure CombineConversions = CombineConversions (S)
 structure ConstantPropagation = ConstantPropagation (S)
 structure Contify = Contify (S)
 structure Flatten = Flatten (S)
+structure GvnPre = GvnPre (S)
 structure Inline = Inline (S)
 structure IntroduceLoops = IntroduceLoops (S)
 structure KnownCase = KnownCase (S)
@@ -190,12 +190,12 @@ local
                  ("combineConversions",  CombineConversions.transform),
                  ("commonArg", CommonArg.transform),
                  ("commonBlock", CommonBlock.transform),
-                 ("gvnPre", GvnPre.transform),
                  ("commonSubexp", CommonSubexp.transform),
                  ("constantPropagation", ConstantPropagation.transform),
                  ("contify", Contify.transform),
                  ("dropProfile", Profile.dropProfile),
                  ("flatten", Flatten.transform),
+                 ("gvnPre", GvnPre.transform),
                  ("introduceLoops", IntroduceLoops.transform),
                  ("knownCase", KnownCase.transform),
                  ("localFlatten", LocalFlatten.transform),
