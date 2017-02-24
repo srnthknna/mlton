@@ -94,7 +94,7 @@ in
     val (expGen', expGen) = make' #expGen
     val (phiGen', phiGen) = make' #phiGen
     val (availOut', availOut) = make' #availOut
-    val (availIn', availIn) = make' #availIn
+    val (availIn', _) = make' #availIn
 (*  val (anticOut', anticOut) = make' #anticOut
 *)  val (anticIn', anticIn) = make' #anticIn
 end
@@ -187,8 +187,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	end
 
 	    
-      fun doBuildSets_Phase1 (block, label) =
+      fun doBuildSets_Phase1 (block) =
 	let
+	    val label = Block.label block
 	    val Block.T {args,label,statements,transfer} = block
             val _ = Vector.map(args, fn (a, _) => handlePhiCondtions(a, label)) (*Is this the same args as goto?(they are function args right?) or should I handle them from dom blocks transfers*)
 	    val _ = Vector.map(statements, fn s => handleStatements(s, label))
@@ -206,7 +207,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	    val () = LabelInfo.availOut' labelInfoObj := (case (LabelInfo.dom labelInfoObj) of
 							     SOME domLabel => LabelInfo.availOut (getLabelInfo domLabel)
 							  |   NONE         => [])
-            val () = doBuildSets_Phase1 (block, label)
+            val () = doBuildSets_Phase1 (block)
 	    val () = LabelInfo.availIn' labelInfoObj := (case (LabelInfo.dom labelInfoObj) of
 							      SOME domLabel => LabelInfo.availOut (getLabelInfo domLabel)
 							   |   NONE         => [])
@@ -228,13 +229,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	    (difference lst1 intersection)
 	end
 
-      fun clean(lst1) = lst1
+      fun clean(lst1) = lst1 (*TODO*)
 
       fun checkEquals [] [] = true
 	| checkEquals (l::ls) (b::bs) = VExp.equals(l,b) andalso (checkEquals ls bs)
 	| checkEquals _ _  = false 
 
-      fun findLeader(lst1, lst2) =
+      fun findLeader(lst1, lst2) = (*TODO*)
 	let
 	    val {intersect=intersect,...} = (List.set {equals=VExp.equals, layout=VExp.layout})
 	in
@@ -257,8 +258,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 							val worklist = Vector.toList (children)
 							val Tree.T (block, _) = List.first worklist
 							val label = Block.label block  
-							val ANTIC_OUT = LabelInfo.anticIn (getLabelInfo label)
-							fun handleWorkList ANTIC_OUT worklist = (*stopping criteria*)
+							val ref ANTIC_OUT = LabelInfo.anticIn' (getLabelInfo label)
+											  
+							fun handleWorkList ANTIC_OUT worklist =
 							    (
 							      let
 								  val Tree.T (block, _) = List.pop worklist
@@ -273,16 +275,16 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 														       SOME {values=values,...} => values
 														     | NONE  => [] 
 																    (*ambiquity to work with b' or b*)
-												     val ANTIC_OUT' =
+												     val _ =
 													 case findLeader(LabelInfo.anticIn (getLabelInfo b'label), valList)  of 
 													     NONE => remove (ANTIC_OUT, e)
 													   | SOME _ => ANTIC_OUT  
 												 in
-												     ()(*anticout'*)
+												     ()
 												 end
 										  )
 							      in
-								  ANTIC_OUT (*error*)
+								  ANTIC_OUT 
 							      end
 							    )
 						    in
@@ -300,7 +302,19 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	    val ANTIC_OUT = handleSuccesors (label, childrenCount, children)
 	    val S = diff(ANTIC_OUT, LabelInfo.tmpGen (getLabelInfo label))
 	    val () = LabelInfo.anticIn' (getLabelInfo label) := diff(LabelInfo.expGen (getLabelInfo label), LabelInfo.tmpGen (getLabelInfo label))
-	    val () = List.foreach(S, fn _ => ())
+	    val () = List.foreach(S, fn s =>
+					let
+					    val values = case ValTable.lookup(s, VExp.hash s) of
+									  NONE => []
+									| SOME {values=values,...} => values 
+					    val leader = findLeader(LabelInfo.expGen (getLabelInfo label), values)
+					    val () = case leader of
+							  NONE => LabelInfo.expGen' (getLabelInfo label) := (LabelInfo.expGen (getLabelInfo label))@[s]
+						       |  SOME _ =>  LabelInfo.expGen' (getLabelInfo label) := (LabelInfo.expGen (getLabelInfo label))
+					in
+					    ()
+					end
+				 )
 	    val () = LabelInfo.anticIn' (getLabelInfo label) := clean(LabelInfo.anticIn (getLabelInfo label))
 	    val changed = if (checkEquals old  (LabelInfo.anticIn (getLabelInfo label))) 
 			     then false  
