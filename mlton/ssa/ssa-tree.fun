@@ -456,9 +456,9 @@ structure Exp =
           | Var x => Var.toString x
    end
 
-structure VExp =
+structure VExp = (*add the comment inclusions in sig as well*)
    struct
-   datatype t =
+   datatype t = (*Not included other types of values*)
             VConst of Const.t
 	    | VPrimApp of {prim: Type.t Prim.t,
 			   args: t list vector}
@@ -481,9 +481,9 @@ structure VExp =
      in
 	 case e of
 	     VConst c => Const.layout c
-           | VPrimApp {prim, args} =>
+           | VPrimApp {prim=prim,...} =>
              seq [Prim.layout prim,
-                     seq [str " ", empty]]
+                     seq [str " ", empty]] (*should fill the empty*)
            | VVar x => Var.layout x
      end
 	 
@@ -505,7 +505,7 @@ structure VExp =
    in         
    val hash  = 
     fn (VConst c) => Const.hash c
-     | (VPrimApp {args, ...}) => hashVExps (args, primApp)
+     | (VPrimApp {args, ...}) => hashVExps (args, primApp) 
      | (VVar x) => Var.hash x
    end
    
@@ -1874,7 +1874,7 @@ structure Program =
          ((* Can't do Type.clear because it clears out the info needed for
            * Type.dest.
            *)
-          Vector.foreach (datatypes, Datatype.clear)
+           Vector.foreach (datatypes, Datatype.clear)
           ; Vector.foreach (globals, Statement.clear)
           ; List.foreach (functions, Function.clear))
 
