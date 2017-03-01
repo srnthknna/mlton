@@ -128,19 +128,6 @@ signature SSA_TREE =
             val unit: t
          end
 
-      structure VExp:
-         sig
-	     datatype t =
-		      VConst of Const.t
-		      | VPrimApp of {args: t list vector,
-				     prim: Type.t Prim.t}
-		      | VVar of Var.t
-				    
-             val equals: t * t -> bool
-             val hash: t -> Word.t
-             val layout: t -> Layout.t
-         end
-	     
       structure Statement:
          sig
             datatype t = T of {exp: Exp.t,

@@ -455,64 +455,6 @@ structure Exp =
           | Tuple xs => Var.prettys (xs, global)
           | Var x => Var.toString x
    end
-
-structure VExp = (*add the comment inclusions in sig as well*)
-   struct
-   datatype t = (*Not included other types of values*)
-            VConst of Const.t
-	    | VPrimApp of {prim: Type.t Prim.t,
-			   args: t list vector}
-	    | VVar of Var.t
-			  
-   fun vexpsListEquals (xs, xs') = Vector.equals (xs, xs', vexpsEquals)
-   and vexpsEquals (xs, xs') = List.equals (xs, xs', equals)
-   and equals (e: t, e': t): bool =
-       case (e, e') of
-           (VConst c, VConst c') => Const.equals (c, c')
-         | (VPrimApp {prim, args, ...},
-            VPrimApp {prim = prim', args = args'}) =>
-           Prim.equals (prim, prim') andalso vexpsListEquals (args, args')
-         | (VVar x, VVar x') => Var.equals (x, x')
-         | _ => false
-		    
-   fun layout e =
-     let
-	 open Layout
-     in
-	 case e of
-	     VConst c => Const.layout c
-           | VPrimApp {prim=prim,...} =>
-             seq [Prim.layout prim,
-                     seq [str " ", empty]] (*should fill the empty*)
-           | VVar x => Var.layout x
-     end
-	 
-   local
-       val newHash = Random.word
-       val primApp = newHash ()
-			  
-       fun hashVExps (xs: t list vector, w: Word.t): Word.t =
-	 Vector.fold (xs, w, fn (x, w) => Word.xorb (w, hashListVExps (x,w)))
-       and hashListVExps (xs: t list, w: Word.t): Word.t =
-           let 
-               val hasher  = 
-                fn (VConst c) => Const.hash c
-		 | (VPrimApp {args, ...}) => hashVExps (args, primApp)
-		 | (VVar x) => Var.hash x
-           in
-               List.fold (xs, w, fn (x, w) => Word.xorb (w, hasher x))
-           end
-   in         
-   val hash  = 
-    fn (VConst c) => Const.hash c
-     | (VPrimApp {args, ...}) => hashVExps (args, primApp) 
-     | (VVar x) => Var.hash x
-   end
-   
-   val hash = Trace.trace ("SsaTree.VExp.hash", layout, Word.layout) hash			  
-   end
-    
-    
 datatype z = datatype Exp.t
 
 structure Statement =
