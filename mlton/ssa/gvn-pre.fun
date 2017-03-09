@@ -12,25 +12,25 @@ struct
 
 open S
 
-
+(* Counter to provide ids for VExp.value *)
 val nextValNum =
     let
 	val ctr = ref 0
     in
 	fn () => (ctr := !ctr + 1 ; !ctr)
     end
-	 
-structure VExp = (*add the comment inclusions in sig as well*)
+	
+structure VExp = 
    struct
 
-   datatype t = (*Not included other types of values*)
+   datatype t = 
             VConst of Const.t
 	    | VPrimApp of {prim: Type.t Prim.t,
 			   args: value vector,
                            targs: Type.t vector}
 	    | VVar of Var.t
-   and value = Value of {vexps: t list ref, id: int}
-
+	and value = Value of {vexps: t list ref, id: int}
+				 
    fun newValue () = Value {vexps=(ref []), id = nextValNum ()}
 			    
    fun valueListEquals (xs, xs') = Vector.equals (xs, xs', valueEquals)
@@ -98,7 +98,7 @@ structure VExp = (*add the comment inclusions in sig as well*)
    end
        
 open Exp Transfer VExp
-	 
+(*	 
 fun toPrettyValue value = case value of
 			      Value {vexps=vexps, id=id} => Layout.toString (layoutValue value)
 fun toPretty vexp = case vexp of
@@ -108,7 +108,8 @@ fun toPretty vexp = case vexp of
 			       (Prim.layoutApp (prim, args, fn x =>
 							       VExp.layoutValue x)) 
 		      | (VVar x) => Var.toString x	 
-
+*)
+	 
 structure ValTable =
 struct
 (* Keep a hash table of canonicalized Exps that are in scope. *)
@@ -126,14 +127,14 @@ fun lookupOrAddHelper (value, vexp, hash) =
        fn {vexp = vexp', ...} => VExp.equals (vexp, vexp'),
        fn () => {vexp = vexp,
 		 hash = hash,
-		 values = (Value {vexps = (ref value), id = 0})})
+		 values = (Value {vexps = value, id = nextValNum ()})})
 	
 fun lookupOrAdd(vexp, hash) =
   let
       val x = lookup(vexp, hash)
   in
       case x of
-	  NONE  => lookupOrAddHelper([], vexp, hash)
+	  NONE  => lookupOrAddHelper(ref [vexp], vexp, hash)
 	| SOME x => x 
   end
 (*      
@@ -144,12 +145,13 @@ fun remove (vexp, hash) =
 *)      
 fun add (vexp, values, hash) =
   let
-      val _ = lookupOrAddHelper(List.concat([values, [vexp]]), vexp, hash)
+      val () = List.push(values, vexp)
+      val _ = lookupOrAddHelper(values, vexp, hash)
   in
       ()
   end
 end
-
+(*
 fun prettyPrinter ()  = HashSet.foreach (ValTable.table,
 					     fn {hash, vexp, values} =>
 						let 
@@ -157,7 +159,7 @@ fun prettyPrinter ()  = HashSet.foreach (ValTable.table,
 						in
 						    ()
 						end)
-					    
+*)					    
     
 structure LabelInfo =
 struct
@@ -206,7 +208,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	      
       fun doNonFunctional(v, label) =
 	let
-	    val () = ValTable.add(VVar v, [], VExp.hash (VVar v))
+	    val () = ValTable.add(VVar v,ref [], VExp.hash (VVar v))
 	    val () = LabelInfo.tmpGen' (getLabelInfo label) := (LabelInfo.tmpGen (getLabelInfo label))@[v]
 	in
 	    ()
@@ -225,7 +227,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 			    )
 	    then ()
 	    else vs := (!vs)@[vexp]
-		 
+(*
       fun valReplace lst l = if List.contains(!lst, l, VExp.equals)
 			     then
 				 let
@@ -236,10 +238,10 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 				     ()
 				 end
 			     else ()
-						   
+*)		   
       fun handlePhiCondtions(v, label) =
 	let
-	    val () = ValTable.add(VVar v, [], VExp.hash (VVar v))
+	    val () = ValTable.add(VVar v,ref [], VExp.hash (VVar v))
 	    val () = LabelInfo.phiGen' (getLabelInfo label) := (LabelInfo.phiGen (getLabelInfo label))@[v]
 	in
 	    ()
@@ -256,11 +258,11 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 		   | SOME var' => (case exp  of
 				       Var v =>
 				       (let
-					   val (vexps, value) = case ValTable.lookup(VVar v, VExp.hash (VVar v)) of
+					   val vexps = case ValTable.lookup(VVar v, VExp.hash (VVar v)) of
 							    SOME {values=value,...} => (case value of
-											    Value {vexps=vexps,...} => (vexps,value))
-							  | NONE => (ref [], VExp.newValue ())
-					   val () = ValTable.add(VVar var', !vexps, VExp.hash (VVar var'))
+											    Value {vexps=vexps,...} => vexps)
+							  | NONE => ref []
+					   val () = ValTable.add(VVar var', vexps, VExp.hash (VVar var'))
 					   val () = (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VVar v))
 					   val () = LabelInfo.tmpGen' (getLabelInfo label) := (LabelInfo.tmpGen (getLabelInfo label))@[var']
 				   in
@@ -280,7 +282,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 						    val exp = VPrimApp {args=valueList, prim=prim, targs=targs}
 						    val {values=primValue,...} = ValTable.lookupOrAdd(exp, VExp.hash exp)
 						    val (Value {vexps=values,...}) = primValue
-						    val () = ValTable.add(VVar var', !values, VExp.hash (VVar var'))
+						    val () = ValTable.add(VVar var', values, VExp.hash (VVar var'))
 						    val _ = Vector.map(args, fn arg => (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VVar arg) ))
 						    val () = (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VPrimApp {args=valueList, prim=prim, targs=targs}))
 						    val () = LabelInfo.tmpGen' (getLabelInfo label) := (LabelInfo.tmpGen (getLabelInfo label))@[var']
@@ -289,7 +291,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 						end)
 					   else doNonFunctional (var', label)
 				       end)
-				     | _  => doNonFunctional (var', label) (* Not sure how to handle other exps*)
+				     | _  => doNonFunctional (var', label) 
 				  ) 
 		)
 	in
@@ -302,9 +304,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
       fun doBuildSets_Phase1 (block) =
 	let
 	    val Block.T {args,label,statements,transfer} = block
-            val _ = Vector.map(args, fn (a, _) => handlePhiCondtions(a, label)) (*Is this the same args as goto?(they are function args right?) or should I handle them from dom blocks transfers*)
+            val _ = Vector.map(args, fn (a, _) => handlePhiCondtions(a, label)) 
 	    val _ = Vector.map(statements, fn s => handleStatements(s, label))
-	    val _ = handleTransfer transfer (*Is there any thing to be handled here*)
+	    val _ = handleTransfer transfer
 	in
 	    ()
 	end
@@ -326,20 +328,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	in
 	    ()
 	end
-(*
-      fun diff(values, vars) =
-	let
-	    fun removeIfPresent [] _ = []
-	      | removeIfPresent (v::vs) var = case v of
-						  (Value {vexps=vexps,...})=>(if List.contains(!vexps, var, VExp.equals)
-									      then vs
-									      else (v::(removeIfPresent vs var)))
-	    fun removeVars values [] = values 
-	      | removeVars values (v::vr) = removeVars (removeIfPresent values v) vr  
-	in
-	    removeVars values vars
-	end
-*)
+
       fun diff(lst1, lst2) =
 	let
 	    val {intersect=intersect,...} = (List.set {equals=VExp.equals, layout=VExp.layout})
@@ -352,110 +341,177 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	    (difference lst1 intersection)
 	end
 
-      fun clean(lst1) = lst1 (*TODO*)
+      fun clean(lst1, tempGen) =
+	let
+	    val tempsToVal = List.map(tempGen, fn temp => case ValTable.lookup(VVar temp, VExp.hash(VVar temp)) of
+									    NONE => VExp.newValue ()
+									   |SOME {values,...} => values
+				     )
+	    val {intersect=intersect,...} = (List.set {equals=VExp.valueEquals, layout=VExp.layoutValue})
+				    
+	    fun isValid vexp = case vexp of
+				   (VPrimApp {args=args,...}) => (case intersect(Vector.toList args,tempsToVal) of
+											[] => [vexp]
+										      | _ => [])
+				 | otherExpressions => [otherExpressions] 
+	      
+				   
+	    fun processedTemps [] = []
+	      | processedTemps (l::ls) = ((isValid l)@(processedTemps ls))
+	in
+	    processedTemps lst1
+	end
 
       fun checkEquals [] [] = true
 	| checkEquals (l::ls) (b::bs) = VExp.equals(l,b) andalso (checkEquals ls bs)
 	| checkEquals _ _  = false 
 
-      fun findLeader(_, _) = NONE(*TODO*)
-(*	let
-	    val {intersect=intersect,...} = (List.set {equals=VExp.valueEquals, layout=VExp.layoutValue})
+      fun findLeader( anticIn, exp) =
+	let
+	    val v = ValTable.lookup(exp, VExp.hash exp)
+				   
+	    fun leader [] _ = []
+	      | leader (l::ls) (SOME {values,...}) =  (case ValTable.lookup(l, VExp.hash l) of
+							  NONE => leader ls v
+							| SOME {values = values',...} => if VExp.valueEquals(values, values')
+											 then [l]
+											 else leader ls v)
+	      | leader _ _ = []
+				  
+	    val result = leader anticIn v
 	in
-	    if  (List.length (intersect (lst1, lst2))>0)
-	    then SOME (List.first (intersect (lst1, lst2)))
-	    else NONE
+	    result
 	end
-*)
+      
       fun evaluateList [] = false
 	| evaluateList (l::ls) = l orelse evaluateList ls 
 	    
-      fun phiTranslate (lst, _, _) = lst (*TODO*)
+      fun phiTranslate (lst, block, succBlock) = 
+	let
+	    val Block.T {transfer,...} = block
+	    val Block.T {args=toVar',...} = succBlock
+	    val fromVar' = case transfer of
+			       Goto {args,...} => args
+			     | _ => Vector.fromList [] 
+	    fun varToValue v = case ValTable.lookup((VVar v), VExp.hash(VVar v)) of
+				       NONE => VExp.newValue ()
+				     | SOME {values,...} => values
+	    val fromVar = Vector.toList fromVar'
+	    val toVar = List.map(Vector.toList toVar', fn (arg,_) => arg)
+	    val toValue = List.map(toVar, fn arg => varToValue arg) 
+	    val fromValue = List.map(fromVar, fn arg => varToValue arg)
+	    val {intersect=intersect,...} = (List.set {equals=VExp.valueEquals, layout=VExp.layoutValue})
+	 
+	    fun translate vexp = case vexp of
+				     (VVar v) => (case List.index(fromVar, fn v' => Var.equals(v,v')) of
+						     NONE => vexp
+						   | SOME i => (VVar (List.nth(toVar,i)))
+						 )
+				   | (VPrimApp {prim=prim, args=args, targs=targs}) =>
+				     let
+					 val intersection = intersect (Vector.toList args, fromValue)
+					 fun translateArgs args = Vector.map(args, fn arg =>
+										      (case List.index(fromValue, fn arg' => VExp.valueEquals(arg,arg')) of
+											   NONE => arg
+											 | SOME i => (List.nth(toValue,i))
+										      )
+									    )
+				     in
+					 case intersection of
+					     [] => vexp
+					   | _ => (VPrimApp {prim=prim, args=(translateArgs args), targs=targs}) 
+				     end
+				   | x  => x 
+	in
+	    List.map(lst, translate)
+	end
 
-      fun handleSuccesors (block, childrenCount, children) = if childrenCount=1
-					      then phiTranslate (LabelInfo.anticIn (getLabelInfo block), block, children)
-					      else if (childrenCount>1)
-					      then
-						  (
-						    let
-							val worklist = Vector.toList (children)
-							val Tree.T (block, _) = List.first worklist
-							val label = Block.label block
-							val ANTIC_OUT = ref []
-							val () = ANTIC_OUT := LabelInfo.anticIn (getLabelInfo label)
-											  
-							fun handleWorkList ANTIC_OUT worklist =
-							    (
-							      let
-								  val Tree.T (block, _) = List.pop worklist
-										    
-								  val b'label = Block.label block 
-								  val () =
-								      List.foreach(!ANTIC_OUT, fn e => 
-												  let
-												      val v = ValTable.lookup(e, VExp.hash e)
-												      val {remove=remove,...} = (List.set {equals=VExp.equals, layout=VExp.layout})
-												      val valList = case v of
-															SOME {values=values,...} => values
-														     | NONE  => VExp.newValue ()
-												      (*ambiquity to work with b' or b*)
-												      val () =
-													  case findLeader (LabelInfo.anticIn (getLabelInfo b'label), valList)  of 
-													      NONE => ANTIC_OUT := (remove (!ANTIC_OUT, e))
-													    | SOME _ => ()  
-												  in
-												      ()
-												  end
-										  )
-							      in
-								  !ANTIC_OUT 
-							      end
-							    )
-						    in
-							(handleWorkList ANTIC_OUT (ref worklist)) 
-						    end
-						  ) 
-					      else []
+      fun handleSuccesors (block, childrenCount, children) =
+	if childrenCount=1
+	then
+	    let
+		val succBlock = List.first children
+		val succBlockLabel = Block.label succBlock
+	    in
+		phiTranslate (LabelInfo.anticIn (getLabelInfo (succBlockLabel)), block, succBlock)
+	    end
+	else if (childrenCount>1)
+	then
+	    (
+	      let
+		  val worklist = ref children
+		  val block = List.pop worklist
+		  val label = Block.label block
+		  val ANTIC_OUT = ref []
+		  val () = ANTIC_OUT := LabelInfo.anticIn (getLabelInfo label)
+							  
+		  fun handleWorkList ANTIC_OUT (ref []) = !ANTIC_OUT
+		    | handleWorkList ANTIC_OUT worklist =
+		      (
+			let
+			    val block = List.pop worklist
+						 
+			    val b'label = Block.label block 
+			    val () =
+				List.foreach(!ANTIC_OUT, fn e => 
+							    let
+								val {remove=remove,...} = (List.set {equals=VExp.equals, layout=VExp.layout})
+								val () =
+								    case findLeader (LabelInfo.anticIn (getLabelInfo b'label), e)  of 
+									[] => ANTIC_OUT := (remove (!ANTIC_OUT, e))
+								      | _ => ()  
+							    in
+								()
+							    end
+					    )
+			in
+			    (handleWorkList ANTIC_OUT worklist)
+			end
+		      )
+	      in
+		  (handleWorkList ANTIC_OUT worklist) 
+	      end
+	    ) 
+	else []
       
-      fun loopTree_Phase2 (blockTree) =
+      fun loopTree_Phase2 (blockTree, labelNode, nodeBlock) =
 	let
 	    val Tree.T (block, children) = blockTree
 	    val label = Block.label block
 	    val old = (LabelInfo.anticIn (getLabelInfo label))
-	    val childrenCount = Tree.Seq.fold(children, 0, fn (_,b) => b+1)
 	    val ANTIC_OUT = ref []
-	    val () = ANTIC_OUT := handleSuccesors (label, childrenCount, children)
+
+	    fun successors block = List.map(DirectedGraph.Node.successors (labelNode (Block.label block)), nodeBlock o DirectedGraph.Edge.to)
+	    val blockSuccessors = (successors block)
+	    val () = ANTIC_OUT := handleSuccesors (block, List.length blockSuccessors,  blockSuccessors)
 	    val tmpList = List.map(LabelInfo.tmpGen (getLabelInfo label), fn v => (VVar v))
 	    val S = diff(!ANTIC_OUT, tmpList)
 	    val () = LabelInfo.anticIn' (getLabelInfo label) := diff(LabelInfo.expGen (getLabelInfo label), tmpList)
 	    val () = List.foreach(S, fn s =>
 					let
-					    val values = case ValTable.lookup(s, VExp.hash s) of
-									  NONE => []
-									| SOME {values=(Value {vexps=values,...}),...} => !values 
-					    val leader = findLeader(LabelInfo.expGen (getLabelInfo label), values)
+					    val leader = findLeader(LabelInfo.expGen (getLabelInfo label), s)
 					    val () = case leader of
-							  NONE => (valInsert (LabelInfo.anticIn' (getLabelInfo label)) s)
-						       |  SOME _ => ()
+							  [] => (valInsert (LabelInfo.anticIn' (getLabelInfo label)) s)
+						       |  _ => ()
 					in
 					    ()
 					end
 				 )
-	    val () = LabelInfo.anticIn' (getLabelInfo label) := clean(LabelInfo.anticIn (getLabelInfo label))
+	    val () = LabelInfo.anticIn' (getLabelInfo label) := clean(LabelInfo.anticIn (getLabelInfo label), (LabelInfo.tmpGen (getLabelInfo label)))
 	    val changed = if (checkEquals old  (LabelInfo.anticIn (getLabelInfo label))) 
-			     then false  
-			     else true 
-	    val changedList = Tree.Seq.map (children,fn child => loopTree_Phase2 (child))
+			  then false  
+			  else true
+	    val changedList = Tree.Seq.map (children,fn child => loopTree_Phase2 (child, labelNode, nodeBlock))
 					   
 	in
 	    evaluateList (changed::(Vector.toList (changedList)))
 	end
 
-      fun doBuildSets_Phase2 (blockTree) =
+      fun doBuildSets_Phase2 (blockTree, labelNode, nodeBlock) =
 	let
-	    val changed = loopTree_Phase2(blockTree)
+	    val changed = loopTree_Phase2(blockTree, labelNode, nodeBlock)
 	    val isChanged = if (changed)
-			    then doBuildSets_Phase2(blockTree)
+			    then doBuildSets_Phase2(blockTree, labelNode, nodeBlock)
 			    else false
 	in
 	    isChanged 
@@ -468,8 +524,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 				     let
 					 val {args, blocks, mayInline, name, raises, returns, start} = Function.dest f
 					 val () = loopTree_Phase1 ((Function.dominatorTree f), NONE)
+					 val {labelNode=labelNode, nodeBlock=nodeBlock, ...} = Function.controlFlow f
 					 (*val () = prettyPrinter ()*)
-					 (*val _ = doBuildSets_Phase2((Function.dominatorTree f))*)
+					 val _ = doBuildSets_Phase2((Function.dominatorTree f, labelNode, nodeBlock))
 				     in
 					 Function.new {args = args,
 						       blocks = blocks,
