@@ -559,7 +559,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	let
 	    val changed = loopTree_Phase2(blockTree, labelNode, nodeBlock)
 	    val isChanged = if changed
-			    then doBuildSets_Phase2(blockTree, labelNode, nodeBlock)
+			   then doBuildSets_Phase2(blockTree, labelNode, nodeBlock)
 			    else false
 	in
 	    isChanged 
@@ -575,8 +575,15 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 					 val () = loopTree_Phase1 ((Function.dominatorTree f), NONE)
 					 val () = diag "done with buildsets phase 1" "List.map(functions)"
 					 val {labelNode=labelNode, nodeBlock=nodeBlock, ...} = Function.controlFlow f
+					 val _ = HashSet.foreach (ValTable.table,
+					     fn {hash, vexp, values} =>
+						let 
+						    val () = diag "Table" (Layout.toString (Layout.seq [VExp.layout vexp, VExp.layoutValue values]))
+						in
+						    ()
+						end)
 					 (*val () = prettyPrinter ()*)
-					 (*val _ = doBuildSets_Phase2((Function.dominatorTree f, labelNode, nodeBlock))*)
+					 (*val _ = doBuildSets_Phase2((Function.dominatorTree f, labelNode, nodeBlock)*)
 				     in
 					 Function.new {args = args,
 						       blocks = blocks,
