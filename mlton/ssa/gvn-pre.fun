@@ -59,8 +59,7 @@ structure VExp =
    fun newValue () = Value {vexps=(ref []), id = nextValNum ()}
    fun nullValue () = Value {vexps=(ref []), id = (~1)}
 			    
-   fun valueListEquals (xs, xs') = Vector.equals (xs, xs', valueEquals)
-   and valueEquals(xs: value, xs': value) =
+   fun valueEquals(xs: value, xs': value) =
        let
            val Value {id=id,...} = xs
            val Value {id=id',...} = xs'
@@ -266,14 +265,14 @@ local
     fun make' f = (make f, ! o (make f))
 in
     val (dom', dom) = make' #dom
-	val (predecessor',predecessor) = make' #predecessor
+	val (predecessor', _) = make' #predecessor
 	val (successor',successor) = make' #successor
     val (tmpGen', tmpGen) = make' #tmpGen
 	val (killGen', killGen) = make' #killGen
     val (expGen', expGen) = make' #expGen
-    val (phiGen', phiGen) = make' #phiGen
+    val (phiGen', _) = make' #phiGen
     val (availOut', availOut) = make' #availOut
-    val (availIn', _) = make' #availIn
+    val (_, _) = make' #availIn
 (*  val (anticOut', anticOut) = make' #anticOut
 *)  val (anticIn', anticIn) = make' #anticIn
 end
@@ -395,9 +394,10 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	    ()
 	end
 	    
-      fun loopTree_Phase1 (blockTree, parent, labelNode, nodeBlock) =
+      fun loopTree_Phase1 (blockTree, parent, labelNode, nodeBlock, bfsFunctionList) =
 	let
 	    val Tree.T (block, children) = blockTree
+		val () = append(bfsFunctionList, block)
 	    val label = Block.label block
 	    (*val () = diagWithLabel label "buildset phase 1 started"*)
 		val labelInfoObj = (getLabelInfo label)
@@ -417,16 +417,18 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 							   |   NONE         => [])
 	    (*val () = diagWithLabel label "populating the gen lists for the block"*)
 	    val () = doBuildSets_Phase1 (block)
-	    val () = LabelInfo.availIn' labelInfoObj := (case (LabelInfo.dom labelInfoObj) of
-							     SOME domLabel => LabelInfo.availOut (getLabelInfo domLabel)
-							  |   NONE         => [])
 	    (*val () = diagWithLabel label "over with this block"
 	    val () = diagWithLabel label "lets see the gen list corresponding for this block"
 	    val () = diagWithLabel label "dom"*)
-	    val dom = case (LabelInfo.dom (getLabelInfo label)) of
+	    (*
+		val dom = case (LabelInfo.dom (getLabelInfo label)) of
 			  NONE => "NONE"
 			| SOME dom =>  (Layout.toString (Label.layout dom))
-	    (*val () = diagWithLabel label dom
+		*)
+	    val () = diagWithLabel label "killOut"
+	    val () = diagWithLabel label (Layout.toString (List.layout Var.layout (LabelInfo.killGen (getLabelInfo label))))
+	    
+		(*val () = diagWithLabel label dom
 	    val () = diagWithLabel label "availOut"
 	    val () = diagWithLabel label (Layout.toString (List.layout VExp.layout (LabelInfo.availOut (getLabelInfo label))))
 	    val () = diagWithLabel label "phiGen"
@@ -436,7 +438,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	    val () = diagWithLabel label "tempGem"
 	    val () = diagWithLabel label (Layout.toString (List.layout Var.layout (LabelInfo.tmpGen (getLabelInfo label))))*)
 					   
-	    val () = Tree.Seq.foreach (children,fn child => loopTree_Phase1 (child, SOME label, labelNode, nodeBlock))
+	    val () = Tree.Seq.foreach (children,fn child => loopTree_Phase1 (child, SOME label, labelNode, nodeBlock, bfsFunctionList))
 	in
 	    ()
 	end
@@ -463,9 +465,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 															   VExp.Value{id=id,...} => id
 														 end
 				                )
-	    val {intersect=intersect,...} = (List.set {equals=Int.equals, layout=Int.layout})
 		
-    fun evaluateList [] = false
+    fun evaluateList [] = true
 	  | evaluateList (l::ls) = l andalso evaluateList ls 
 						
 		fun checkValue v = case (!v) of 
@@ -478,7 +479,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 				 | (VVar v) => if List.contains(killGen,v,Var.equals)
                                then false
                                else true
-                 |  otherExpressions => true						   
+                 |  _ => true						   
 							   
 							   
 	    fun processedKills [] = []
@@ -490,28 +491,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	in
 	    processedKills lst1
 	end
-(*	    
-      fun clean(lst1, tempGen) =
-	let
-	    val tempsToVal = List.map(tempGen, fn temp => case (ValTable.lookup (VVar temp)) of
-							      NONE => ref (VExp.newValue ())
-							     |SOME {values,...} => ref values
-				     )
-	    val {intersect=intersect,...} = (List.set {equals=VExp.primValueEquals, layout=VExp.primLayoutValue})
-						
-	    fun isValid vexp = case vexp of
-				   (VPrimApp {args=args,...}) => (case intersect(Vector.toList args,tempsToVal) of
-								      [] => [vexp]
-								    | _ => [])
-				 | otherExpressions => [otherExpressions] 
-							   
-							   
-	    fun processedTemps [] = []
-	      | processedTemps (l::ls) = ((isValid l)@(processedTemps ls))
-	in
-	    processedTemps lst1
-	end
-*)	    
+   
       fun checkEquals [] [] = true
 	| checkEquals (l::ls) (b::bs) = VExp.equals(l,b) andalso (checkEquals ls bs)
 	| checkEquals _ _  = false 
@@ -581,11 +561,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 					     [] => vexp (* lookup or add *)
 					   | _ => (let 
 					              val newVexp = (VPrimApp {prim=prim, args=(translateArgs args), targs=targs})
-								  val (v,id) = case ValTable.lookup(vexp) of
-								            SOME {values=value,...} => (case value of
-											   Value {vexps=vexps,id=id} => (vexps,id))
-							              | NONE => (ref [],nextValNum ())
-					              val _ = ValTable.add(newVexp,v,id)
+					              val _ = ValTable.lookupOrAdd(newVexp)
 						  in
 						      newVexp
 						  end)								  
@@ -593,7 +569,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 				   | x  => x 
 	in
 	    case transfer of
-		Goto {args,...} => List.map(lst, translate)
+		Goto {...} => List.map(lst, translate)
 	      | _ => [] 
 	end
 	    
@@ -652,9 +628,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 		 []
 	     end)
 		 
-      fun loopTree_Phase2 (blockTree, labelNode, nodeBlock) =
+      fun loopTree_Phase2 (block) =
 	let
-	    val Tree.T (block, children) = blockTree
+	    
 	    val label = Block.label block
 	    val () = diagWithLabel label "starting with block for this iteration"
 		val labelInfoObj = (getLabelInfo label)
@@ -684,64 +660,117 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 	    val () = diag "ANTIC_IN After inserts "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn (getLabelInfo label))))		 
 	    val () = LabelInfo.anticIn' (getLabelInfo label) := clean(LabelInfo.anticIn (getLabelInfo label), (LabelInfo.killGen (getLabelInfo label)))
 	    val () = diag "ANTIC_IN After Clean "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn (getLabelInfo label))))
-	    val changed = if (checkEquals old  (LabelInfo.anticIn (getLabelInfo label))) 
-			  then false  
-			  else true
-	    val () = diagWithLabel label (Bool.toString changed)
+
 	    val () = diagWithLabel label "done with block for this iteration"
-	    val changedList = Tree.Seq.map (children,fn child => loopTree_Phase2 (child, labelNode, nodeBlock))
 					   
 	in
-	    evaluateList (changed::(Vector.toList (changedList)))
+	  if (checkEquals old  (LabelInfo.anticIn (getLabelInfo label))) 
+	  then false  
+	  else true
 	end
 
-      fun doBuildSets_Phase2 (blockTree, labelNode, nodeBlock) =
+	fun doBuildSets_Phase2 (dfsFunctionList) =
 	let
 	    val iterNumber = nextValNumIter ()
 	    val () = diag "Starting iteration " (Int.toString iterNumber)
-	    val changed = loopTree_Phase2(blockTree, labelNode, nodeBlock)
+	    val isChanged = if evaluateList(List.map(dfsFunctionList, fn block => loopTree_Phase2 block))
+		                then doBuildSets_Phase2 (dfsFunctionList)
+						else false
+			    
+				
 	    val () = diag "Fininshing iteration " (Int.toString iterNumber)
-	    val () = diag "changed value for all" (Bool.toString changed)
-	    val isChanged = if changed
-			    then doBuildSets_Phase2(blockTree, labelNode, nodeBlock)
-			    else false
 	in
 	    isChanged 
 	end
+	
+	fun eliminateStatements s block = 
+	   let
+	     val Statement.T {var=var, exp=exp, ty=ty} = s
+		 val label = Block.label block
+		 val labelInfoObj = (getLabelInfo label)
+		 in
+			(case var of
+						  NONE => s
+						| SOME v => (case exp of
+										PrimApp {prim=prim,...}=> 
+												   (let
+												      val () = diag "statement working on " (Layout.toString (Statement.layout s))
+												      val exp' = if (Prim.isFunctional prim) 
+													             then 
+																     (let
+																	      val () = diag "availOut" (Layout.toString (List.layout VExp.layout (LabelInfo.availOut labelInfoObj)))
+																		  val () = diag "exp" (Layout.toString (VExp.layout (VVar v)))
+																	      val sList' = findLeader(LabelInfo.availOut labelInfoObj, VVar v)
+																		  val () = diag "availOut" (Layout.toString (List.layout VExp.layout sList'))
+																		  
+																		  
+																	  in
+																	    (case sList' of
+																		 [] => exp
+																		| [(VVar s')] =>   if VExp.equals(VVar s',VVar v)
+																							then exp
+																							else (Var s') 
+																		| _ => exp)
+																	  end)
+																 else exp
+													val () = diag "changed exp " (Layout.toString (Exp.layout exp'))
+													in
+													  Statement.T {var=var, exp=exp', ty=ty}
+													end)
+										| _ => s)
+			)
+	     
+	   end
+	
+	fun eliminate block = 
+	   let
+	    val () = diag "eliminate block " (Layout.toString (Block.layout block))
+		val Block.T {args,label,statements,transfer} = block
+		val statements' = Vector.map(statements, fn s => eliminateStatements s block)
+		val () = diag "" "eliminate done for the block"
+	   in
+		Block.T {args=args, label=label, statements=statements', transfer=transfer}
+	   end
 	    
       val globalLabel = Label.fromString "globals"
       val () = diag "Number of globals" (Int.toString (Vector.length globals))
       val () = diag "globals" (Layout.toString (Vector.layout Statement.layout globals))
       val _ = Vector.map(globals, fn s => handleStatements(s, globalLabel))
 	      
-      val functions = List.map(functions,fn f =>
-				     let
-					 val {args, blocks, mayInline, name, raises, returns, start} = Function.dest f
-					 val dfsFunctionList = ref []
-					 val () = Function.dfs(f,fn b => fn a => append(dfsFunctionList,b))
-					 val () = diag "function name" (Func.toString name)
-					 (*val () = diag "starting buildsets phase 1" "List.map(functions)"*)
-					 val {labelNode=labelNode, nodeBlock=nodeBlock, ...} = Function.controlFlow f
-					 val () = loopTree_Phase1 ((Function.dominatorTree f), NONE, labelNode, nodeBlock)
-					 (*val () = diag "done with buildsets phase 1" "List.map(functions)"*)
-					 val () = diag "dfs for function blocks " (Layout.toString (List.layout Block.layout (!dfsFunctionList)))
-                     val () = diag "done with buildsets phase 1" "List.map(functions)"
-					 (*val () = prettyPrinter ()*)
-					 val () = diag "starting buildsets phase 2" "List.map(functions)"
-					 (*val _ = doBuildSets_Phase2((Function.dominatorTree f, labelNode, nodeBlock))*)
-					 val () = diag "done with buildsets phase 2" "List.map(functions)"
-					 	
-				     in
-					 Function.new {args = args,
-						       blocks = blocks,
-						       mayInline = mayInline,
-						       name = name,
-						       raises = raises,
-						       returns = returns,
-						       start = start}
-				     end)	 
+   
+   
+
+	  val functions = List.map(functions,fn f =>
+				 let
+				 val {args, blocks, mayInline, name, raises, returns, start} = Function.dest f
+				 val dfsFunctionList = ref []
+				 val bfsFunctionList = ref []
+				 val () = Function.dfs(f,fn b => fn () => append(dfsFunctionList,b))
+				 val () = diag "function name" (Func.toString name)
+				 (*val () = diag "starting buildsets phase 1" "List.map(functions)"*)
+				 val {labelNode=labelNode, nodeBlock=nodeBlock, ...} = Function.controlFlow f
+				 val () = loopTree_Phase1 ((Function.dominatorTree f), NONE, labelNode, nodeBlock, bfsFunctionList)
+				 (*val () = diag "done with buildsets phase 1" "List.map(functions)"*)
+				 val () = diag "dfs for function blocks " (Layout.toString (List.layout Block.layout (!dfsFunctionList)))
+				 val () = diag "done with buildsets phase 1" "List.map(functions)"
+				 (*val () = prettyPrinter ()*)
+				 val () = diag "starting buildsets phase 2" "List.map(functions)"
+				 val _ = doBuildSets_Phase2(!dfsFunctionList)
+				 val () = diag "done with buildsets phase 2" "List.map(functions)"
+				 
+				 val blocks = Vector.map(Vector.fromList (!bfsFunctionList), fn block => eliminate block)
+					
+				 in
+				 Function.new {args = args,
+						   blocks = blocks,
+						   mayInline = mayInline,
+						   name = name,
+						   raises = raises,
+						   returns = returns,
+						   start = start}
+				 end)	 
       val _ = HashSet.foreach (ValTable.table,
-			       fn {hash, vexp, values} =>
+			       fn {vexp=vexp, values=values,...} =>
 				  let 
 				      val () = diag "Table" (Layout.toString (Layout.seq [VExp.layout vexp, VExp.layoutValue values]))
 				  in
