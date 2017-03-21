@@ -162,7 +162,7 @@ struct
 
     fun lookupOrAddHelper (value, vexp, id) =
         let
-        val hash = VExp.hash vexp
+            val hash = VExp.hash vexp
         in
           HashSet.lookupOrInsert
               (table, hash,
@@ -290,44 +290,45 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
             val () =
             (case var of
                  NONE => () (*can there be statements without the RHS part where some things need to be done*)
-               | SOME var' => (case exp  of
-                           Var v =>
-                           (let
-                               val (vexps,id) = case (ValTable.lookup (VVar v)) of
-                                                    SOME {values=value,...} => (case value of
-                                                                                    Value {vexps=vexps,id=id} => (vexps,id))
-                                                  | NONE => (ref [], nextValNum ())
-                               val () = ValTable.add(VVar var', vexps, id)
-                               val () = (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VVar v))
-                               val () = List.push(LabelInfo.tmpGen' (getLabelInfo label), var')
-                            in
-                                ()
-                            end)
-                        | PrimApp {args=args, prim=prim,targs=targs} =>
-                           (let
-                                val isFunctional = Prim.isFunctional prim
-                            in
-                                if isFunctional
-                                then (let
-                                        val valueList = Vector.map(args, fn arg =>
-                                                        case (ValTable.lookup (VVar arg)) of
-                                                            SOME {values=value,...} => ref value
-                                                          | NONE => ref (VExp.newValue ()) (*filler will never happen*))
-                                        (*implement the canon exps case here*)
-                                        val exp = VPrimApp {args=valueList, prim=prim, targs=targs}
-                                        val {values=primValue,...} = ValTable.lookupOrAdd exp
-                                        val (Value {vexps=values,id=id}) = primValue
-                                        val () = ValTable.add(VVar var', values, id)
-                                        val _ = Vector.map(args, fn arg => (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VVar arg) ))
-                                        val () = (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VPrimApp {args=valueList, prim=prim, targs=targs}))
-                                        val () = List.push(LabelInfo.tmpGen' (getLabelInfo label), var')
-                                    in
-                                        ()
-                                    end)
-                                else doNonFunctional (var', label)
-                           end)
-                        | _  => doNonFunctional (var', label) (* what are the other expressions that need to be taken care of *)
-                      )
+               | SOME var' =>
+               (case exp  of
+                       Var v =>
+                       (let
+                           val (vexps,id) = case (ValTable.lookup (VVar v)) of
+                                                SOME {values=value,...} => (case value of
+                                                                                Value {vexps=vexps,id=id} => (vexps,id))
+                                              | NONE => (ref [], nextValNum ())
+                           val () = ValTable.add(VVar var', vexps, id)
+                           val () = (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VVar v))
+                           val () = List.push(LabelInfo.tmpGen' (getLabelInfo label), var')
+                        in
+                            ()
+                        end)
+                    | PrimApp {args=args, prim=prim,targs=targs} =>
+                       (let
+                            val isFunctional = Prim.isFunctional prim
+                        in
+                            if isFunctional
+                            then (let
+                                    val valueList = Vector.map(args, fn arg =>
+                                                    case (ValTable.lookup (VVar arg)) of
+                                                        SOME {values=value,...} => ref value
+                                                      | NONE => ref (VExp.newValue ()) (*filler will never happen*))
+                                    (*implement the canon exps case here*)
+                                    val exp = VPrimApp {args=valueList, prim=prim, targs=targs}
+                                    val {values=primValue,...} = ValTable.lookupOrAdd exp
+                                    val (Value {vexps=values,id=id}) = primValue
+                                    val () = ValTable.add(VVar var', values, id)
+                                    val _ = Vector.map(args, fn arg => (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VVar arg) ))
+                                    val () = (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VPrimApp {args=valueList, prim=prim, targs=targs}))
+                                    val () = List.push(LabelInfo.tmpGen' (getLabelInfo label), var')
+                                in
+                                    ()
+                                end)
+                            else doNonFunctional (var', label)
+                       end)
+                    | _  => doNonFunctional (var', label) (* what are the other expressions that need to be taken care of *)
+                   )
             )
         in
             case var of
@@ -429,8 +430,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                 and isValid vexp = case vexp of
                            (VPrimApp {args=args,...}) => allTrue (Vector.toList (Vector.map(args , fn a => checkValue a)))
                          | (VVar v) => if List.contains(killGen,v,Var.equals)
-                                   then false
-                                   else true
+                                       then false
+                                       else true
                          |  _ => true
 
                 fun processedKills [] = []
@@ -469,13 +470,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                          Goto {args,...} => args
                        | _ =>
                          let
-                         val () = diag "transfer type " (Layout.toString (Transfer.layout transfer))
+                            val () = diag "transfer type " (Layout.toString (Transfer.layout transfer))
                          in
-                         Vector.fromList []
+                            Vector.fromList []
                          end
                 fun varToValue v = case (ValTable.lookup (VVar v)) of
-                           NONE => ref (VExp.nullValue ())(*remove this and make -1 case*)
-                         | SOME {values,...} => ref values
+                                       NONE => ref (VExp.nullValue ())(*remove this and make -1 case*)
+                                     | SOME {values,...} => ref values
                 val toVar = Vector.toList toVar'
                 val fromVar = List.map(Vector.toList fromVar', fn (arg,_) => arg)
                 val toValue = List.map(toVar, fn arg => varToValue arg)
@@ -494,12 +495,12 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                            | (VPrimApp {prim=prim, args=args, targs=targs}) =>
                              let
                                  val intersection = intersect (Vector.toList args, fromValue)
-                                 fun translateArgs args = Vector.map(args, fn arg =>
-                                                          (case List.index(fromValue, fn arg' => VExp.primValueEquals(arg,arg')) of
-                                                           NONE => arg
-                                                         | SOME i => (List.nth(toValue,i))
-                                                          )
-                                                    )
+                                 fun translateArgs args =
+                                    Vector.map(args, fn arg =>
+                                      (case List.index(fromValue, fn arg' => VExp.primValueEquals(arg,arg')) of
+                                           NONE => arg
+                                         | SOME i => (List.nth(toValue,i))
+                                      ))
                              in
                                  case intersection of
                                      [] => vexp (* lookup or add *)
@@ -513,7 +514,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                            | x  => x
         in
             case transfer of
-            Goto {...} => List.map(lst, translate)
+                Goto {...} => List.map(lst, translate)
               | _ => []
         end
 
@@ -529,8 +530,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                 end
             else if (childrenCount>1)
             then
-                (
-                  let
+                (let
                       val () = diag "Succesor count for block case 2 " (Int.toString childrenCount)
                       val worklist = ref children
                       val block = List.pop worklist
@@ -540,10 +540,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                       val () = diag "ANTIC_OUT before removals" (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))
                       fun handleWorkList ANTIC_OUT (ref []) = !ANTIC_OUT
                         | handleWorkList ANTIC_OUT worklist =
-                          (
-                            let
+                          (let
                                 val block = List.pop worklist
-
                                 val b'label = Block.label block
                                 val () =
                                 List.foreach(!ANTIC_OUT, fn e =>
@@ -559,13 +557,11 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                             )
                             in
                                 (handleWorkList ANTIC_OUT worklist)
-                            end
-                          )
+                            end)
                       val () = diag "ANTIC_OUT after removals" (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))
                   in
                     (handleWorkList ANTIC_OUT worklist)
-                  end
-                )
+                  end)
             else (let
                     val () = diag "Succesor count for block case 3 " (Int.toString childrenCount)
                  in
@@ -593,8 +589,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                             let
                                 val leader = findLeader(LabelInfo.expGen labelInfoObj, s)
                                 val () = case leader of
-                                        [] => (valInsert (LabelInfo.anticIn' labelInfoObj) s)
-                                      |  _ => ()
+                                            [] => (valInsert (LabelInfo.anticIn' labelInfoObj) s)
+                                          |  _ => ()
                             in
                                 ()
                             end
