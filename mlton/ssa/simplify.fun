@@ -81,6 +81,7 @@ val ssaPassesDefault =
    {name = "localFlatten3", doit = LocalFlatten.transform} ::
    {name = "combineConversions", doit = CombineConversions.transform} ::
    {name = "commonArg", doit = CommonArg.transform} ::
+   {name = "breakCriticalEdges", doit = fn p => S.breakCriticalEdges (p, {codeMotion = true}) } ::
    {name = "gvnPre", doit = GvnPre.transform} ::
    {name = "commonSubexp", doit = CommonSubexp.transform} ::
    {name = "commonBlock", doit = CommonBlock.transform} ::
