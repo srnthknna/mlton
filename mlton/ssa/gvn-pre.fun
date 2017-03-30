@@ -359,11 +359,11 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
         fun doBuildSets_Phase1 (block) =
             let
                 val Block.T {args,label,statements,transfer} = block
-                val () = diagWithLabel label "do args !!! phi condition"
+                (*val () = diagWithLabel label "do args !!! phi condition"*)
                 val _ = Vector.map(args, fn (a, ty) => handlePhiCondtions(a, label, ty))
-                val () = diagWithLabel label "do statements that is the expressions"
+                (*val () = diagWithLabel label "do statements that is the expressions"*)
                 val _ = Vector.map(statements, fn s => handleStatements(s, label))
-                val () = diagWithLabel label "do the transfer which is empty for now"
+                (*val () = diagWithLabel label "do the transfer which is empty for now"*)
                 val _ = handleTransfer transfer (* filler for now does nothing *)
             in
                 ()
@@ -399,8 +399,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 NONE => "NONE"
                             | SOME dom =>  (Layout.toString (Label.layout dom))
                 *)
-                val () = diagWithLabel label "killOut"
-                val () = diagWithLabel label (Layout.toString (List.layout Var.layout (LabelInfo.killGen (getLabelInfo label))))
+                (*val () = diagWithLabel label "killOut"*)
+                (*val () = diagWithLabel label (Layout.toString (List.layout Var.layout (LabelInfo.killGen (getLabelInfo label))))*)
 
                 (*val () = diagWithLabel label dom
                 val () = diagWithLabel label "availOut"
@@ -482,14 +482,14 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 
         fun phiTranslate (lst, block, succBlock) =
             let
-                val () = diag "Phitranslate begins for ANTIC_IN " (Layout.toString (List.layout VExp.layout lst))
+                (*val () = diag "Phitranslate begins for ANTIC_IN " (Layout.toString (List.layout VExp.layout lst))*)
                 val Block.T {transfer,...} = block
                 val Block.T {args=fromVar',...} = succBlock
                 val toVar' = case transfer of
                          Goto {args,...} => args
-                       | _ =>
+                       | _ => 
                          let
-                            val () = diag "transfer type " (Layout.toString (Transfer.layout transfer))
+                            (*val () = diag "transfer type " (Layout.toString (Transfer.layout transfer))*)
                          in
                             Vector.fromList []
                          end
@@ -500,10 +500,10 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                 val fromVar = List.map(Vector.toList fromVar', fn (arg,_) => arg)
                 val toValue = List.map(toVar, fn arg => varToValue arg)
                 val fromValue = List.map(fromVar, fn arg => varToValue arg)
-                val () = diag "fromVar " (Layout.toString (List.layout Var.layout fromVar))
-                val () = diag "toVar " (Layout.toString (List.layout Var.layout toVar))
-                val () = diag "fromValue " (Layout.toString (List.layout (fn v => layoutValue (!v)) fromValue))
-                val () = diag "toValue " (Layout.toString (List.layout (fn v => layoutValue (!v)) toValue))
+                (*val () = diag "fromVar " (Layout.toString (List.layout Var.layout fromVar))*)
+                (*val () = diag "toVar " (Layout.toString (List.layout Var.layout toVar))*)
+                (*val () = diag "fromValue " (Layout.toString (List.layout (fn v => layoutValue (!v)) fromValue))*)
+                (*val () = diag "toValue " (Layout.toString (List.layout (fn v => layoutValue (!v)) toValue))*)
                 val {intersect=intersect,...} = (List.set {equals=VExp.primValueEquals, layout=(fn v => layoutValue (!v))})
 
                 fun translate vexp = case vexp of
@@ -548,7 +548,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
             if childrenCount=1
             then
                 let
-                    val () = diag  "Succesor count for block case 1 " (Int.toString childrenCount)
+                    (*val () = diag  "Succesor count for block case 1 " (Int.toString childrenCount)*)
                     val succBlock = List.first children
                     val succBlockLabel = Block.label succBlock
                 in
@@ -557,13 +557,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
             else if (childrenCount>1)
             then
                 (let
-                      val () = diag "Succesor count for block case 2 " (Int.toString childrenCount)
+                      (*val () = diag "Succesor count for block case 2 " (Int.toString childrenCount)*)
                       val worklist = ref children
                       val block = List.pop worklist
                       val label = Block.label block
                       val ANTIC_OUT = ref []
                       val () = ANTIC_OUT := LabelInfo.anticIn (getLabelInfo label)
-                      val () = diag "ANTIC_OUT before removals" (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))
+                      (*val () = diag "ANTIC_OUT before removals" (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))*)
                       fun handleWorkList ANTIC_OUT (ref []) = !ANTIC_OUT
                         | handleWorkList ANTIC_OUT worklist =
                           (let
@@ -584,12 +584,12 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                             in
                                 (handleWorkList ANTIC_OUT worklist)
                             end)
-                      val () = diag "ANTIC_OUT after removals" (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))
+                      (*val () = diag "ANTIC_OUT after removals" (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))*)
                   in
                     (handleWorkList ANTIC_OUT worklist)
                   end)
             else (let
-                    val () = diag "Succesor count for block case 3 " (Int.toString childrenCount)
+                    (*val () = diag "Succesor count for block case 3 " (Int.toString childrenCount)*)
                  in
                     []
                  end)
@@ -597,20 +597,20 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
         fun loopTree_Phase2 (block) =
             let
                 val label = Block.label block
-                val () = diagWithLabel label "starting with block for this iteration"
+                (*val () = diagWithLabel label "starting with block for this iteration"*)
                 val labelInfoObj = (getLabelInfo label)
                 val old = (LabelInfo.anticIn labelInfoObj)
-                val () = diagWithLabel label  (Layout.toString (List.layout VExp.layout old))
+                (*val () = diagWithLabel label  (Layout.toString (List.layout VExp.layout old))*)
                 val ANTIC_OUT = ref []
                 val blockSuccessors = LabelInfo.successor labelInfoObj
                 val () = ANTIC_OUT := handleSuccesors (block, List.length blockSuccessors,  blockSuccessors)
-                val () = diag "ANTIC_OUT "  (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))
+                (*val () = diag "ANTIC_OUT "  (Layout.toString (List.layout VExp.layout (!ANTIC_OUT)))*)
                 val tmpList = List.map(LabelInfo.tmpGen labelInfoObj, fn v => (VVar v))
-                val () = diag "tmpList "  (Layout.toString (List.layout VExp.layout tmpList))
+                (*val () = diag "tmpList "  (Layout.toString (List.layout VExp.layout tmpList))*)
                 val S = diff(!ANTIC_OUT, tmpList)
-                val () = diag "S "  (Layout.toString (List.layout VExp.layout S))
+                (*val () = diag "S "  (Layout.toString (List.layout VExp.layout S))*)
                 val () = LabelInfo.anticIn' labelInfoObj := diff(LabelInfo.expGen labelInfoObj, tmpList)
-                val () = diag "ANTIC_IN "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn labelInfoObj)))
+                (*val () = diag "ANTIC_IN "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn labelInfoObj)))*)
                 val () = List.foreach(S, fn s =>
                             let
                                 val leader = findLeader(LabelInfo.expGen labelInfoObj, s)
@@ -621,10 +621,10 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 ()
                             end
                          )
-                val () = diag "ANTIC_IN After inserts "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn (getLabelInfo label))))
+                (*val () = diag "ANTIC_IN After inserts "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn (getLabelInfo label))))*)
                 val () = LabelInfo.anticIn' (getLabelInfo label) := clean(LabelInfo.anticIn (getLabelInfo label), (LabelInfo.killGen (getLabelInfo label)))
-                val () = diag "ANTIC_IN After Clean "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn (getLabelInfo label))))
-                val () = diagWithLabel label "done with block for this iteration"
+                (*val () = diag "ANTIC_IN After Clean "  (Layout.toString (List.layout VExp.layout (LabelInfo.anticIn (getLabelInfo label))))*)
+                (*val () = diagWithLabel label "done with block for this iteration"*)
             in
                 if (List.equals(old,(LabelInfo.anticIn (getLabelInfo label)),VExp.equals))
                 then false
@@ -634,11 +634,11 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
         fun doBuildSets_Phase2 (dfsBlockList) =
             let
                 val iterNumber = nextValNumIter ()
-                val () = diag "Starting iteration " (Int.toString iterNumber)
+                (*val () = diag "Starting iteration " (Int.toString iterNumber)*)
                 val isChanged = if someTrue(List.map(dfsBlockList, fn block => loopTree_Phase2 block))
                                 then doBuildSets_Phase2 (dfsBlockList)
                                 else false
-                val () = diag "Fininshing iteration " (Int.toString iterNumber)
+                (*val () = diag "Fininshing iteration " (Int.toString iterNumber)*)
             in
                 isChanged
             end
@@ -654,14 +654,14 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                    | SOME v => (case exp of
                                     PrimApp {prim=prim,...}=>
                                     (let
-                                        val () = diag "statement working on " (Layout.toString (Statement.layout s))
+                                        (*val () = diag "statement working on " (Layout.toString (Statement.layout s))*)
                                         val exp' =  if (Prim.isFunctional prim)
                                                     then
                                                        (let
-                                                           val () = diag "availOut" (Layout.toString (List.layout VExp.layout (LabelInfo.availOut labelInfoObj)))
-                                                           val () = diag "exp" (Layout.toString (VExp.layout (VVar v)))
+                                                           (*val () = diag "availOut" (Layout.toString (List.layout VExp.layout (LabelInfo.availOut labelInfoObj)))*)
+                                                           (*val () = diag "exp" (Layout.toString (VExp.layout (VVar v)))*)
                                                            val sList' = findLeader(LabelInfo.availOut labelInfoObj, VVar v)
-                                                           val () = diag "availOut" (Layout.toString (List.layout VExp.layout sList'))
+                                                           (*val () = diag "availOut" (Layout.toString (List.layout VExp.layout sList'))*)
 
 
                                                        in
@@ -673,7 +673,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                                           | _ => exp)
                                                        end)
                                                     else exp
-                                        val () = diag "changed exp " (Layout.toString (Exp.layout exp'))
+                                        (*val () = diag "changed exp " (Layout.toString (Exp.layout exp'))*)
                                     in
                                         Statement.T {var=var, exp=exp', ty=ty}
                                     end)
@@ -683,10 +683,10 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 
         fun eliminate block =
             let
-                val () = diag "eliminate block " (Layout.toString (Block.layout block))
+                (*val () = diag "eliminate block " (Layout.toString (Block.layout block))*)
                 val Block.T {args,label,statements,transfer} = block
                 val statements' = Vector.map(statements, fn s => eliminateStatements s block)
-                val () = diag "" "eliminate done for the block"
+                (*val () = diag "" "eliminate done for the block"*)
             in
                 Block.T {args=args, label=label, statements=statements', transfer=transfer}
             end
@@ -694,7 +694,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
     fun doMergingBlock block v1opv2 new_stuff =
       let
           val label = Block.label block
-              val labelInfoObj = (getLabelInfo label)
+          val labelInfoObj = (getLabelInfo label)
           val availKey = ref []
           val availValue = ref []
 		  val v1opv2Type = case ValTable.lookup(v1opv2) of
@@ -730,6 +730,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                       let
                                           val predLabel = Block.label p
                                           val e' = List.first(phiTranslate([v1opv2],p,block))
+										  val () = diagWithLabel predLabel (Layout.toString (VExp.layout e'))
+										  val () = diagWithLabel label (Layout.toString (VExp.layout v1opv2))
                                       in                                          
 										(let
 											val e'' = findLeader(LabelInfo.availOut (getLabelInfo predLabel),e')
@@ -760,9 +762,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 								let
 									val predLabel = Block.label p
 									val e' = get(predLabel)
-									
+									val () = diag "working on preds: " "adding new statements"
 									val () = case e' of
-											 SOME exp' =>
+											 SOME exp' => if (VExp.equals(exp',v1opv2)) then
 											 (case exp' of
 											  VPrimApp {args=args,targs=targs,prim=prim} =>
 											  let
@@ -771,37 +773,59 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 													    case (leader (LabelInfo.availOut (getLabelInfo predLabel)) (!l)) of
 													      [VVar v] => v::(buildPrimArgs ls)
 														  | _ => (buildPrimArgs ls)
+														  (*[VConst c] => c::(buildPrimArgs ls)
+														  | [VPrimApp {args=args,...}] => (buildPrimArgs ls)*)
 												  val translatedArgs = Vector.fromList (buildPrimArgs (Vector.toList args))
 												  val t = Var.newNoname ()
+												  val () = diag "working on: " "adding new statements"
+												  val () = diagWithLabel predLabel (Layout.toString (VExp.layout exp'))
 												  val newStatement = Statement.T {exp=(PrimApp {args=translatedArgs,targs=targs,prim=prim}),ty=v1opv2Type,var=(SOME t)}
-												  val () = List.push(LabelInfo.statementsGen' (getLabelInfo predLabel),newStatement)
+												  val () = diagWithLabel predLabel (Layout.toString (Exp.layout (PrimApp {args=translatedArgs,targs=targs,prim=prim})))
+												  val () = diagWithLabel predLabel (Layout.toString (Statement.layout newStatement))
+												  val () = diagWithLabel predLabel (Layout.toString (VExp.layout exp'))
+												  val () = diagWithLabel predLabel (Layout.toString (VExp.layout v1opv2))
+												  (*val () = List.push(LabelInfo.statementsGen' (getLabelInfo predLabel),newStatement)*)
 												  val () = case (ValTable.lookupOrAdd exp' v1opv2Type) of
 													   {values=values,...} =>
 													   (case values of
 														   VExp.Value {vexps=vexps,id=id,vType=vType} => ValTable.add(VVar t,vexps,id,vType))
-												  val () = List.push(LabelInfo.gotoArgsGen' (getLabelInfo predLabel),t)
+												  
 												  val () = List.push(LabelInfo.availOut' (getLabelInfo predLabel),VVar t)
 												  val () = put(predLabel,VVar t)
-													  
 											  in
 												  ()
 											  end
 											| _  => ())
+											else let val () = diagWithLabel predLabel (Layout.toString (VExp.layout exp')) in () end
 										   | NONE => () 
-									val t' = Var.newNoname ()
-									val () = List.push(LabelInfo.argsGen' (getLabelInfo predLabel),(t',v1opv2Type))
-									val () = case ValTable.lookup(v1opv2) of
-											 SOME {values=values',...} => ()
-											 (*(case values' of
-											  VExp.Value {vexps=vexps',id=id',vType=vType'} => ValTable.add(VVar t',vexps',id',vType'))*)
-										   | NONE => ()
-									val () = List.push(LabelInfo.availOut' labelInfoObj, VVar t')
-									(*add phi*)
-									val () = new_stuff := true          
-									val () = List.push(LabelInfo.newSets' labelInfoObj, VVar t')
 								in
 								()
 								end)
+								
+					val t' = Var.newNoname ()
+					(*val () = List.push(LabelInfo.argsGen' labelInfoObj,(t',v1opv2Type))
+					val _ = List.foreach(LabelInfo.predecessor labelInfoObj, fn p =>
+																let
+																   val predLabel = Block.label p
+																   val pexp = get(predLabel)
+																   
+																in
+																   case pexp of
+																	  NONE => ()
+																	| SOME pexp' =>  (case pexp' of
+																					   (VVar v) => List.push(LabelInfo.gotoArgsGen' (getLabelInfo predLabel),v)
+																					  | _ => ())
+																end)*)
+					val () = case ValTable.lookup(v1opv2) of
+							 SOME {values=values',...} => 
+							 (case values' of
+							  VExp.Value {vexps=vexps',id=id',vType=vType'} => ValTable.add(VVar t',vexps',id',vType'))
+						   | NONE => ()
+						   
+					val () = List.push(LabelInfo.availOut' labelInfoObj, VVar t')
+					(*add phi*)
+					val () = new_stuff := true          
+					val () = List.push(LabelInfo.newSets' labelInfoObj, VVar t')
 				 in
 					()
                  end)
@@ -903,8 +927,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
       end
 
         val globalLabel = Label.fromString "globals"
-        val () = diag "Number of globals" (Int.toString (Vector.length globals))
-        val () = diag "globals" (Layout.toString (Vector.layout Statement.layout globals))
+        (*val () = diag "Number of globals" (Int.toString (Vector.length globals))*)
+        (*val () = diag "globals" (Layout.toString (Vector.layout Statement.layout globals))*)
         val _ = Vector.map(globals, fn s => handleStatements(s, globalLabel))
 
         val functions = List.map(functions,fn f =>
@@ -920,15 +944,15 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 val () = handleFunctionArgs args (Function.dominatorTree f)
 								val () = loopTree_Phase1 ((Function.dominatorTree f), NONE, labelNode, nodeBlock, bfsBlockList)
                                 (*val () = diag "done with buildsets phase 1" "List.map(functions)"*)
-                                val () = diag "dfs for function blocks " (Layout.toString (List.layout Block.layout (!dfsBlockList)))
-                                val () = diag "done with buildsets phase 1" "List.map(functions)"
+                                (*val () = diag "dfs for function blocks " (Layout.toString (List.layout Block.layout (!dfsBlockList)))*)
+                                (*val () = diag "done with buildsets phase 1" "List.map(functions)"*)
                                 (*val () = prettyPrinter ()*)
-                                val () = diag "starting buildsets phase 2" "List.map(functions)"
+                                (*val () = diag "starting buildsets phase 2" "List.map(functions)"*)
                                 val _ = doBuildSets_Phase2(!dfsBlockList)
-                                val () = diag "done with buildsets phase 2" "List.map(functions)"
+                                (*val () = diag "done with buildsets phase 2" "List.map(functions)"*)
                                 val _ = insert(!bfsBlockList)
-                                val blocks = Vector.map(blocks, fn b => buildBlock b) 
-                                val blocks = Vector.map(Vector.fromList (!bfsBlockList), fn block => eliminate block)
+                                (*val blocks = Vector.map(blocks, fn b => buildBlock b)*)
+                                (*val blocks = Vector.map(Vector.fromList (!bfsBlockList), fn block => eliminate block)*)
                             in
                                 Function.new {args = args,
                                               blocks = blocks,
@@ -938,13 +962,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                               returns = returns,
                                               start = start}
                             end)
-        val _ = HashSet.foreach (ValTable.table,
+        (*val _ = HashSet.foreach (ValTable.table,
                         fn {vexp=vexp, values=values,...} =>
                           let
                               val () = diag "Table" (Layout.toString (Layout.seq [VExp.layout vexp, VExp.layoutValue values]))
                           in
                               ()
-                          end)
+                          end)*)
         val program =
               Program.T {datatypes = datatypes,
                          globals = globals,
