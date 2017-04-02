@@ -466,7 +466,11 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
           | leader (l::ls) value =  (case (ValTable.lookup l) of
                                                        NONE => leader ls value
                                                      | SOME {values = value',...} => if VExp.valueEquals(value, value')
-                                                                                      then [l]
+                                                                                      then (
+																					       case l of
+																						   (VVar var) => [l]
+																						   | _ => leader ls value
+																						   )
                                                                                       else leader ls value)
 
         fun findLeader(anticIn, exp) =
@@ -707,21 +711,22 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 | SOME i => SOME (List.nth(!availValue,i))
                              )
           
-                  
-          fun put(b,e) = case get(b) of
-		                    NONE => 
-								  let
-									  val () = List.push(availKey,b)
-									  val () = List.push(availValue,e)
-								  in
-									  ()
-								  end
-                           | SOME exp => 
-						   let
-							  val () = availValue := List.map(!availValue, fn e' => if VExp.equals(exp,e') then e else e') 
-						  in
-							  ()
-						  end
+          
+			fun change(_,_,[]) = []
+			|   change(0, v, _::xs) =  v :: xs
+			|   change(i, v, x::xs) =  if i < 0 then x::xs
+						   else  x :: change((i-1), v, xs)
+
+						   fun put(b,e) = (case List.index(!availKey, fn b' => Label.equals(b,b')) of
+            NONE =>
+				  let
+				      val () = List.push(availKey,b)
+				      val () = List.push(availValue,e)
+				  in
+				      ()
+				  end
+          | SOME i => availValue := change(i,e,!availValue)
+                         )
                              
           val by_some = ref false
           val all_same = ref true
@@ -740,6 +745,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 											case e'' of
 											[] => (let
 													  val () = put(predLabel,e')
+													  val () = diagWithLabel predLabel "putting the exp here"
+													  val () = diagWithLabel predLabel (Layout.toString (VExp.layout e'))
 													  val () = all_same := false
 												  in
 													()
@@ -764,7 +771,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 								let 
 									val predLabel = Block.label p
 									val e' = get(predLabel)
-									val () = diag "working on preds: " "adding new statements"
+									val () = diagWithLabel predLabel "working on preds: adding new statements"
 									val () = case e' of
 											 SOME exp' => 
 											 (case exp' of
@@ -791,7 +798,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 												  then 
 													  let
 														  val t = Var.newNoname ()
-														  val () = diag "working on: " "adding new statements"
+														  val () = diag "working on: " "adding new 1 statements"
 														  val () = diagWithLabel predLabel (Layout.toString (VExp.layout exp'))
 														  val newStatement = Statement.T {exp=(PrimApp {args=translatedArgs,targs=targs,prim=prim}),ty=v1opv2Type,var=(SOME t)}
 														  val () = diagWithLabel predLabel (Layout.toString (Exp.layout (PrimApp {args=translatedArgs,targs=targs,prim=prim})))
@@ -813,9 +820,15 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 											  in
 												  ()
 											  end
-											| _  => ())
+											| _  => let 
+														val () = diagWithLabel predLabel "var i guess"
+														val () = diagWithLabel predLabel (Layout.toString (VExp.layout exp')) 
+													in 
+														() 
+													end
+											)
 											
-										   | NONE => () 
+										   | NONE => let val () = diagWithLabel predLabel " did not match here in some case" in () end
 								in
 								()
 								end)
