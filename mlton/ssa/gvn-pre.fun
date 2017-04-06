@@ -228,7 +228,9 @@ struct
                        statementsGen: Statement.t list ref,
                        argsGen: (Var.t * Type.t) list ref,
                        gotoArgsGen: Var.t list ref,
-                       anticIn: VExp.t list ref}
+                       anticIn: VExp.t list ref,
+					   argsCount: int ref,
+					   gotoCount: int ref}
 
     fun new () = T {dom = ref NONE,
                     predecessor = ref [],
@@ -243,8 +245,9 @@ struct
                     statementsGen = ref [],
                     argsGen = ref [],
                     gotoArgsGen = ref [],
-                    anticIn = ref []
-                   }
+                    anticIn = ref [],
+                    argsCount = ref 0,
+					gotoCount = ref 0}
 
     (* convenience functions for extracting components *)
     local
@@ -265,6 +268,8 @@ struct
         val (argsGen',argsGen) = make' #argsGen
         val (gotoArgsGen',gotoArgsGen) = make' #gotoArgsGen
         val (anticIn', anticIn) = make' #anticIn
+		val (argsCount', argsCount) = make' #argsCount
+		val (gotoCount', gotoCount) = make' #gotoCount
     end
 end
 
@@ -509,7 +514,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
          | NONE => [] 
             end
 
-        fun someTrue ls = List.forall(ls, fn b => b)
+        fun someTrue ls = List.exists(ls, fn b => b)
 
         fun phiTranslate (lst, block, succBlock) =
             let
@@ -661,17 +666,17 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
             in
                 if (List.equals(old,(LabelInfo.anticIn (getLabelInfo label)),VExp.equals))
                 then false
-                else let val () = diagWithLabel label " change block " in true end
+                else let (*val () = diagWithLabel label " change block "*) in true end
             end
 
         fun doBuildSets_Phase2 (dfsBlockList) =
             let
                 val iterNumber = nextValNumIter ()
-                val () = diag "Starting iteration " (Int.toString iterNumber)
+                (*val () = diag "Starting iteration " (Int.toString iterNumber)*)
                 val isChanged = if someTrue(List.map(dfsBlockList, fn block => loopTree_Phase2 block))
                                 then doBuildSets_Phase2 (dfsBlockList)
                                 else false
-                val () = diag "Fininshing iteration " (Int.toString iterNumber)
+                (*val () = diag "Fininshing iteration " (Int.toString iterNumber)*)
             in
                 isChanged
             end
@@ -687,7 +692,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                    | SOME v => (case exp of
                                     PrimApp {prim=prim,...}=>
                                     (let
-                                        val () = diagWithLabel label (Layout.toString (Statement.layout s))
+                                        (*val () = diagWithLabel label (Layout.toString (Statement.layout s))*)
                                         val exp' =  if (Prim.isFunctional prim)
                                                     then
                                                        (let
@@ -774,7 +779,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                       in                                          
 										(let
 											val () = diagWithLabel predLabel (Layout.toString (List.layout VExp.layout (LabelInfo.availOut (getLabelInfo predLabel))))
-											val e'' = findLeader(LabelInfo.availOut (getLabelInfo predLabel),e')
+											val e'' = if (List.length(findLeader(LabelInfo.availOut (getLabelInfo predLabel),e'))=0)
+													  then findLeader(LabelInfo.availOut (getLabelInfo predLabel),v1opv2)
+													  else findLeader(LabelInfo.availOut (getLabelInfo predLabel),e')
 											val () = diag "leader after phitranslate " (Layout.toString (List.layout VExp.layout (e'')))
 										in
 											case e'' of
@@ -849,7 +856,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 													  in
 													     ()
 													  end
-												  else ()
+												  else 													  let
+														  val () = diag "problem here " ""
+														  val () = diagWithLabel predLabel (Layout.toString (VExp.layout exp'))
+														  
+													  in
+													     ()
+													  end
 											  in
 												  ()
 											  end
@@ -873,10 +886,15 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 																		   
 																		in
 																		   case pexp of
-																			  NONE => ()
+																			  NONE => diagWithLabel predLabel " goto none"
 																			| SOME pexp' =>  (case pexp' of
-																							   (VVar v) => List.push(LabelInfo.gotoArgsGen' (getLabelInfo predLabel),v)
-																							  | _ => ())
+																							   (VVar v) => let val () = List.push(LabelInfo.gotoArgsGen' (getLabelInfo predLabel),v)
+																							               in
+																										   if(List.length(LabelInfo.argsGen labelInfoObj)=List.length(LabelInfo.gotoArgsGen (getLabelInfo predLabel)))
+																										   then (diagWithLabel predLabel " goto fine")
+																										   else diagWithLabel predLabel " goto error"
+																										   end
+																							  | _ => diagWithLabel predLabel " goto unit")
 																		end)
 							val () = case ValTable.lookup(v1opv2) of
 									 SOME {values=values',...} => 
@@ -888,9 +906,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 							(*add phi*)
 							val () = new_stuff := true          
 							val () = List.push(LabelInfo.newSets' labelInfoObj, VVar t')
-						   in
-						   ()
-						   end
+						in
+							 ()
+						end
 					  else ()
 				 in
 					()
@@ -961,7 +979,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
     fun insert bfsBlockList =
       let
           val new_stuff = ref false
-              val () = new_stuff := (if someTrue(List.map(bfsBlockList, fn block => (doInsert block new_stuff)))
+              val () = new_stuff := (if List.forall((List.map(bfsBlockList, fn block => (doInsert block new_stuff))),fn l => l)
                     then (insert bfsBlockList)
                     else false)
             in
@@ -1056,21 +1074,30 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 		  val transfer = Block.transfer block
 		  val label = Block.label block
           val labelInfoObj = (getLabelInfo label)
+		  val () = diagWithLabel label " buildBlock"
       in
 		  if List.length(LabelInfo.argsGen labelInfoObj)>0
 		  then
 			  let
 				val args' = Vector.fromList (Vector.toList(args)@LabelInfo.argsGen labelInfoObj)
+				val () = LabelInfo.argsCount' labelInfoObj := Vector.length args'
+				val () = diag " vec args length count" (Int.toString (Vector.length args'))
+				val () = diag " args count" (Int.toString (LabelInfo.argsCount labelInfoObj))
+				val transfer' = case transfer of
+				                   Transfer.Goto {args=gargs,dst=dst} => LabelInfo.gotoCount' labelInfoObj := Vector.length gargs
+					               | _ => ()
 			  in
 				Block.T {args=args',label=label,transfer=transfer,statements=statements}
 			  end
 		  else
 			  let
+				  val () = LabelInfo.argsCount' labelInfoObj := Vector.length args
 				  val statements' = Vector.fromList (Vector.toList(statements)@List.rev(LabelInfo.statementsGen labelInfoObj))
 				  val transfer' = case transfer of
 				                   Transfer.Goto {args=gargs,dst=dst} => 
 									   let
 										  val gargs' = Vector.fromList (Vector.toList(gargs)@LabelInfo.gotoArgsGen labelInfoObj)
+										  val () = LabelInfo.gotoCount' labelInfoObj := Vector.length gargs'
 									   in
 										  Transfer.Goto {args=gargs',dst=dst}
 									   end
@@ -1078,6 +1105,26 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
 			  in
 				  Block.T {args=args,label=label,transfer=transfer',statements=statements'}
 			  end
+      end
+	  
+	  fun checkbuildBlock block =
+      let
+		  val label = Block.label block
+          val labelInfoObj = (getLabelInfo label)
+      in
+		List.foreach(LabelInfo.predecessor labelInfoObj, fn p =>
+																let
+																   val predLabel = Block.label p
+																   
+																in
+																   if Int.equals((LabelInfo.argsCount labelInfoObj),(LabelInfo.gotoCount (getLabelInfo predLabel)))
+																   then ()
+																   else let val () = diagWithLabel predLabel " goto mismatch "
+																			val () = diag "pred: " (Int.toString (LabelInfo.gotoCount (getLabelInfo predLabel)))
+																			val () = diagWithLabel label ((Int.toString (LabelInfo.argsCount labelInfoObj)))
+																		in () end
+																end)
+				
       end
 
         (*val () = diag "Number of globals" (Int.toString (Vector.length globals))*)
@@ -1109,11 +1156,11 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 (*val () = diag "done with buildsets phase 2" "List.map(functions)"*)
                                 val _ = insert(!bfsBlockList)
                                 val blocks = Vector.map(blocks, fn b => buildBlock b)
-								
+								val _ = Vector.map(blocks, fn b => checkbuildBlock b)
                                 val blocks = Vector.map(blocks, fn block => eliminate block)
 								val blocks = Vector.map(blocks, fn b => removeTransitivity b)
                             in
-                                shrink(Function.new {args = args,
+                                (Function.new {args = args,
                                               blocks = blocks,
                                               mayInline = mayInline,
                                               name = name,
