@@ -72,6 +72,9 @@ struct
            | VPrimApp of {prim: Type.t Prim.t,
                 args: value ref vector,
                             targs: Type.t vector}
+		   | VConApp of {args: value ref vector,
+                          con: Con.t}
+		   | VTuple of value ref vector
            | VVar of Var.t
     and value = Value of {vexps: t list ref, id: int, vType: Type.t}
 
@@ -94,6 +97,10 @@ struct
           | (VPrimApp {prim, args, ...},
              VPrimApp {prim = prim', args = args',...}) =>
                 Prim.equals (prim, prim') andalso primValueListEquals (args, args')
+		  | (VConApp {con, args},
+             VConApp {con = con', args = args'}) =>
+                Con.equals (con, con') andalso primValueListEquals (args, args')
+		  | (VTuple xs, VTuple xs') => primValueListEquals (xs, xs')
           | (VVar x, VVar x') => Var.equals (x, x')
           | _ => false
 
@@ -120,6 +127,10 @@ struct
                              else Vector.layout Type.layout targs
                         else empty,
                             seq [str " ", layoutTuple args]]
+		  | VConApp {con=con,args=args} => 
+				seq [Con.layout con,
+                        seq [str " ", layoutTuple args]]
+		  | VTuple xs => seq [str " ", layoutTuple xs]
           | VVar x => Var.layout x
     end
 
@@ -142,6 +153,8 @@ struct
         val hash  =
          fn (VConst c) => Const.hash c
           | (VPrimApp {args, ...}) => hashValueList (args, primApp)
+		  | (VConApp {args,...}) => hashValueList (args, primApp)
+		  | (VTuple xs) => hashValueList (xs, primApp)
           | (VVar x) => Var.hash x
     end
 
@@ -170,7 +183,9 @@ struct
              VPrimApp {prim=prim,args=args,targs=targs} => if (Prim.isCommutative prim)
                                        then VPrimApp {prim=prim,args = sort args, targs=targs}
                                        else vexp
-               | _ => vexp
+			| VConApp {con=con,args=args} => VConApp {con=con, args = sort args}
+			| VTuple xs => VTuple (sort xs)
+            | _ => vexp
 
     fun lookup vexp =
         let
@@ -341,7 +356,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                            val () = List.push(LabelInfo.tmpGen' (getLabelInfo label), var')
                         in
                             ()
-                        end)
+                        end)(*add*)
                     | PrimApp {args=args, prim=prim,targs=targs} =>
                        (let
                             val isFunctional = Prim.isFunctional prim
@@ -540,7 +555,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                              (VVar v) => (case List.index(fromVar, fn v' => Var.equals(v,v')) of
                                       NONE => vexp
                                     | SOME i => (VVar (List.nth(toVar,i)))
-                                 )
+                                 )(*add*)
                            | (VPrimApp {prim=prim, args=args, targs=targs}) =>
                              let
                                  val intersection = intersect (Vector.toList args, fromValue)
@@ -683,7 +698,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
             in
                 (case var of
                  NONE => s
-                   | SOME v => (case exp of
+                   | SOME v => (case exp of(*add*)
                                     PrimApp {prim=prim,...}=>
                                     (let
                                         (*val () = diagWithLabel label (Layout.toString (Statement.layout s))*)
@@ -703,7 +718,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                                                      then exp
                                                                      else (let 
 																	          val eCount = statementsEliminated () 
-																			  (*val () = diag "eliminate Count " (Int.toString eCount)*)
+																			  val () = diag "eliminate Count " (Int.toString eCount)
 																			in 
 																			  (Var s') 
 																		   end)
@@ -948,7 +963,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                      let
                      val e = List.pop(worklist)
                      val () = diag "inside doworklist " (Layout.toString (VExp.layout e))
-					 val () = case e of
+					 val () = case e of(*add*)
                                 VPrimApp {...} => (case findLeader(domAvailOut,e) of
 													[] => let val () = diag "null exp: " (Layout.toString (VExp.layout e)) in doMergingBlock block e new_stuff end
 												| _   => let val () = diag "other exp: " (Layout.toString (VExp.layout e)) in () end)
