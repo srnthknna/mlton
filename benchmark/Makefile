@@ -41,12 +41,11 @@ BFLAGS := -mlton "$(BIN)/mlton"
 test: $(NAME)
 	cd tests && ../benchmark $(BFLAGS) $(BENCH)
 
-QBENCH := $(BENCH)
-QBFLAGS := -mlton "~/devel/mlton/mlton-20061119-1.x86-darwin/build/bin/mlton"
-QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk/build/bin/mlton"
-# QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk.inline/build/bin/mlton -drop-pass introduceLoops1 -drop-pass loopInvariant1 -inline-leafa-loops true -inline-leafa-repeat false -inline-leafa-size 20 -drop-pass inlineLeaf2"
-# QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk.inline/build/bin/mlton -inline-leafa-loops true -inline-leafa-repeat true -inline-leafa-size 20 -inline-leafb-loops true -inline-leafb-repeat true -inline-leafb-size 40"
-QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk.inline/build/bin/mlton"
+QBENCH := $(BENCH) 
+QBFLAGS := -mlton "~/workspace/mlton/build/bin/mlton -drop-pass 'commonSubexp' -drop-pass 'gvnPre'"
+QBFLAGS += -mlton "~/workspace/mlton/build/bin/mlton -drop-pass 'gvnPre'"
+QBFLAGS += -mlton "~/workspace/mlton/build/bin/mlton -drop-pass 'commonSubexp'"
+QBFLAGS += -mlton "~/workspace/mlton/build/bin/mlton"
 
 .PHONY: qtest
 qtest: $(NAME)
