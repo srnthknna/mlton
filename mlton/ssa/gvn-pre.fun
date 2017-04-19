@@ -389,9 +389,9 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                     ()
                                 end)
                             else doNonFunctional (var', label, ty)
-                       end)(*
+                       end)
                     | ConApp {con=con, args=args} => doFunctional (VConApp {con = con, args = valueList args}) args
-                    | Tuple args => doFunctional (VTuple (valueList args)) args*)
+                    | Tuple args => doFunctional (VTuple (valueList args)) args
                     | _  => doNonFunctional (var', label, ty) (* what are the other expressions that need to be taken care of *)
                    )
                 end
