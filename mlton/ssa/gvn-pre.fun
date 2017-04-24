@@ -54,6 +54,8 @@ struct
                             targs: Type.t vector}
            | VConApp of {args: value vector,
                           con: Con.t}
+           | VSelect of {offset: int,
+                          tuple: value}
            | VTuple of value vector
            | VVar of Var.t
     and value = Value of {vexps: t list ref, id: int, vType: Type.t}
@@ -79,6 +81,8 @@ struct
           | (VConApp {con, args},
              VConApp {con = con', args = args'}) =>
                 Con.equals (con, con') andalso primValueListEquals (args, args')
+          | (VSelect {offset,tuple},
+             VSelect {offset = offset', tuple = tuple'}) => Int.equals(offset,offset') andalso valueEquals(tuple,tuple')
           | (VTuple xs, VTuple xs') => primValueListEquals (xs, xs')
           | (VVar x, VVar x') => Var.equals (x, x')
           | _ => false
@@ -111,6 +115,9 @@ struct
           | VConApp {con=con,args=args} => 
                 seq [Con.layout con,
                         seq [str " ", layoutTuple args]]
+          | VSelect {offset=offset,tuple=tuple} => 
+                seq [str "#", Int.layout offset, str " ",
+                       layoutValue tuple]
           | VTuple xs => seq [str " ", layoutTuple xs]
           | VVar x => Var.layout x
     end
@@ -120,6 +127,7 @@ struct
         val primApp = newHash ()
         val conApp = newHash ()
         val tuple = newHash ()
+        val select = newHash ()
 
         fun hasher v =
           let
@@ -135,6 +143,7 @@ struct
          fn (VConst c) => Const.hash c
           | (VPrimApp {args, ...}) => hashValueList (args, primApp)
           | (VConApp {args,...}) => hashValueList (args, conApp)
+          | (VSelect {offset,tuple}) => Word.xorb (select, (hasher tuple) + Word.fromInt offset)
           | (VTuple xs) => hashValueList (xs, tuple)
           | (VVar x) => Var.hash x
     end
@@ -165,6 +174,7 @@ struct
                                        then VPrimApp {prim=prim,args = sort args, targs=targs}
                                        else vexp
             | VConApp {con=con,args=args} => VConApp {con=con, args = args}
+            | VSelect {offset=offset,tuple=tuple} => VSelect {offset=offset,tuple=tuple}
             | VTuple xs => VTuple (xs)
             | _ => vexp
 
@@ -337,10 +347,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                     in
                     ()
                     end
-                    fun valueList args = Vector.map(args, fn arg =>
-                                                    case (ValTable.lookup (VVar arg)) of
+                    
+                    fun valueChanger arg = case (ValTable.lookup (VVar arg)) of
                                                         SOME {values = value,...} => value
-                                                      | NONE =>  (VExp.newValue ()) (*filler will never happen*))
+                                                      | NONE =>  (VExp.newValue ()) (*filler will never happen*)
+                    
+                    fun valueList args = Vector.map(args, fn arg =>
+                                                    valueChanger arg)
                 in
                     (case exp  of
                        Var v =>
@@ -355,6 +368,16 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                         in
                             ()
                         end)
+                    |  Const c =>
+                       (let
+                        val {values = primValue,...} = ValTable.lookupOrAdd (VConst c) ty
+                        val (Value {vexps = values,id = id,...}) = primValue
+                        val () = ValTable.add(VVar var', values, id, ty)
+                        val () = (valInsert (LabelInfo.expGen' (getLabelInfo label)) (VConst c))
+                        val () = List.push(LabelInfo.tmpGen' (getLabelInfo label), var')
+                            in
+                            ()
+                        end)
                     | PrimApp {args=args, prim=prim,targs=targs} =>
                        (let
                             val isFunctional = Prim.isFunctional prim
@@ -366,10 +389,82 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 in
                                     ()
                                 end)
-                            else doNonFunctional (var', label, ty)
-                       end)(*
+                            else (case Prim.name prim of
+                                     Prim.Name.Array_array =>
+                                        let
+                                           val arr = var'
+                                           val arrTy = ty
+                                           val eltTy = Vector.sub (targs, 0) (* = Type.deArray arrTy *)
+                                           val len = Vector.sub (args, 0)
+                                           val lenTy = Type.word (WordSize.seqIndex ())
+
+                                           (* val arr: arrTy = Array_array[eltTy] (len) *)
+
+                                           (* Create value for arr variable. *)
+                                           val () = doNonFunctional (arr, label, arrTy)
+                                           (* Lookup value for arr variable; must exist. *)
+                                           val {values = arrValue, ...} =
+                                              valOf (ValTable.lookup (VVar arr))
+                                           (* Lookup value for len variable; must exist. *)
+                                           val {values = lenValue, ...} =
+                                              valOf (ValTable.lookup (VVar len))
+                                           (* Add 'Array_length[eltTy] (arrValue)' vexp
+                                            * to value of len variable. *)
+                                           val arrLenPrim =
+                                              VPrimApp {prim = Prim.arrayLength,
+                                                        targs = Vector.new1 eltTy,
+                                                        args = Vector.new1 arrValue}
+                                           val Value {vexps = lenVExps, id = lenId, ...} =
+                                              lenValue
+                                           val () =
+                                              ValTable.add (arrLenPrim, lenVExps, lenId, lenTy)
+                                        in
+                                           ()
+                                        end
+                                   | Prim.Name.Array_toVector =>
+                                        let
+                                           val vec = var'
+                                           val vecTy = ty
+                                           val eltTy = Vector.sub (targs, 0) (* = Type.deVector ty *)
+                                           val arr = Vector.sub (args, 0)
+                                           val lenTy = Type.word (WordSize.seqIndex ())
+
+                                           (* val vec: vecTy = Array_toVector[eltTy] (arr) *)
+
+                                           (* Create value for vec variable *)
+                                           val () = doNonFunctional (vec, label, vecTy)
+                                           (* Lookup value for vec variable; must exist. *)
+                                           val {values = vecValue, ...} =
+                                              valOf (ValTable.lookup (VVar var'))
+                                           (* Lookup value for arr variable; must exist. *)
+                                           val {values = arrValue, ...} =
+                                              valOf (ValTable.lookup (VVar arr))
+                                           (* Lookup value for 'Array_length[eltTy] (arrValue)' vexp;
+                                            * may not exist. *)
+                                           val arrLenPrim =
+                                              VPrimApp {prim = Prim.arrayLength,
+                                                        targs = Vector.new1 eltTy,
+                                                        args = Vector.new1 arrValue}
+                                           val {values = arrLenValue, ...} =
+                                              ValTable.lookupOrAdd arrLenPrim lenTy
+                                           (* Add 'Vector_length[eltTy] (vecValue)' vexp
+                                            * to value of 'Array_length[eltTy] (arrValue)' vexp. *)
+                                           val vecLenPrim =
+                                              VPrimApp {prim = Prim.vectorLength,
+                                                        targs = Vector.new1 eltTy,
+                                                        args = Vector.new1 vecValue}
+                                           val Value {vexps = arrLenVExps, id = arrLenId, ...} =
+                                              arrLenValue
+                                           val () =
+                                              ValTable.add (vecLenPrim, arrLenVExps, arrLenId, lenTy)
+                                        in
+                                           ()
+                                        end
+                                   | _ => doNonFunctional (var', label, ty))
+                       end)
                     | ConApp {con=con, args=args} => doFunctional (VConApp {con = con, args = valueList args}) args
-                    | Tuple args => doFunctional (VTuple (valueList args)) args*)
+                    | Select {offset=offset, tuple=tuple} => doFunctional (VSelect {offset = offset, tuple = valueChanger tuple}) (Vector.new1 tuple)
+                    | Tuple args => doFunctional (VTuple (valueList args)) args
                     | _  => doNonFunctional (var', label, ty)
                    )
                 end
@@ -640,6 +735,48 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                 val Statement.T {var=var, exp=exp, ty=ty} = s
                 val label = Block.label block
                 val labelInfoObj = (getLabelInfo label)
+                (*Complete logic from commonSubexp pass just to compare the performmance of gvnPre*)
+                (* From mlton/ssa/commonSubexp.fun*)
+                fun commonSubexpCanonLogic exp = 
+                    case exp of
+                     PrimApp {prim, targs, args} =>
+                       let
+                          fun arg i = Vector.sub (args, i)
+                          fun canon2 () =
+                             let
+                                val a0 = arg 0
+                                val a1 = arg 1
+                             in
+                                (* What we really want is a total orderning on
+                                 * variables.  Since we don't have one, we just use
+                                 * the total ordering on hashes, which means that
+                                 * we may miss a few cse's but we won't be wrong.
+                                 *)
+                                if Var.hash a0 <= Var.hash a1
+                                   then (a0, a1)
+                                else (a1, a0)
+                             end
+                          datatype z = datatype Prim.Name.t
+                       in
+                          if Prim.isCommutative prim
+                             then PrimApp {args=(Vector.new2 (canon2 ())),targs=targs,prim=prim}
+                          else
+                             if (case Prim.name prim of
+                                    IntInf_add => true
+                                  | IntInf_andb => true
+                                  | IntInf_gcd => true
+                                  | IntInf_mul => true
+                                  | IntInf_orb => true
+                                  | IntInf_xorb => true
+                                  | _ => false)
+                                then
+                                   let
+                                      val (a0, a1) = canon2 ()
+                                   in PrimApp {args=(Vector.new3 (a0, a1, arg 2)),targs=targs,prim=prim}
+                                   end
+                             else exp
+                       end
+                    | _ => exp
                 fun changeExp v = 
                     (let
                            val sList' = findLeader(LabelInfo.availOut labelInfoObj, VVar v)
@@ -662,11 +799,22 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                     (let
                                         val exp' =  if (Prim.isFunctional prim)
                                                     then changeExp v
-                                                    else exp
+                                                    else (case Prim.name prim of
+                                                            Prim.Name.Array_array => changeExp v
+                                                        | Prim.Name.Array_toVector => changeExp v
+                                                        | _ =>exp)
+                                        val exp'' = commonSubexpCanonLogic exp'
                                     in
-                                        Statement.T {var=var, exp=exp', ty=ty}
+                                        Statement.T {var=var, exp=exp'', ty=ty}
+                                        (*normal gvnPre invocation*)
+                                        (*Statement.T {var=var, exp=exp'', ty=ty}*)
                                     end)
+                                | Const c => 
+                                    (case (findLeader (!globalAvailOut,VConst c)) of
+                                              [VVar v'] => Statement.T {var = var, exp = (Var v'), ty = ty} 
+                                              | _ => Statement.T {var = var, exp = changeExp v, ty = ty}) 
                                 | ConApp {...} => Statement.T {var = var, exp = changeExp v, ty = ty}
+                                | Select {...} => Statement.T {var = var, exp = changeExp v, ty = ty}
                                 | Tuple _ => Statement.T {var = var, exp = changeExp v, ty = ty}
                                 | _ => s)
                 )
@@ -787,7 +935,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                                         (PrimApp {args = translatedArgs, targs = targs, prim = prim})
                                                     | VConApp {con = con, ...} =>
                                                         (ConApp {con = con, args = translatedArgs})
-                                                    |  VTuple _ => Tuple translatedArgs
+                                                    | VTuple _ => Tuple translatedArgs
+                                                    | VSelect {offset,...} => Select {offset=offset, tuple = Vector.sub(translatedArgs,0)}
                                                     | VVar v => Var v
                                                     | VConst c => Const c
                                                   val newStatement = Statement.T {exp = newExp, ty = v1opv2Type, var = (SOME t)}
@@ -810,6 +959,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                              (case exp' of
                                               VPrimApp {args = args, ...} => insertExp args exp'
                                             | VConApp {args = args, ...} => insertExp args exp'
+                                            | VSelect {tuple = tuple,...} => insertExp (Vector.new1 tuple) exp'
                                             | VTuple args => insertExp args exp'
                                             | _  => ()
                                             )
@@ -900,6 +1050,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                      val () = case e of
                                VPrimApp {...} => doMergingBlockExp e
                             |  VConApp {...} => doMergingBlockExp e
+                            |  VSelect {...} => doMergingBlockExp e
                             |  VTuple _ => doMergingBlockExp e
                             | _ => ()
                      in
