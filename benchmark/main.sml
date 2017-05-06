@@ -132,6 +132,7 @@ val benchCounts: (string * int) list =
    ("wc-scanStream", 24576):: (* 30.55 sec *)
    ("zebra", 64):: (* 33.44 sec *)
    ("zern", 12288):: (* 33.59 sec *)
+   ("example", 1000):: (* 10 sec *)
    nil
 
 val benchCount =

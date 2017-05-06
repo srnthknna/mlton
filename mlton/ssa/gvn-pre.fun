@@ -807,7 +807,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                     in
                                         Statement.T {var=var, exp=exp'', ty=ty}
                                         (*normal gvnPre invocation*)
-                                        (*Statement.T {var=var, exp=exp'', ty=ty}*)
+                                        (*Statement.T {var=var, exp=exp', ty=ty}*)
                                     end)
                                 | Const c => 
                                     (case (findLeader (!globalAvailOut,VConst c)) of
@@ -869,13 +869,19 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                       let
                                           val predLabel = Block.label p
                                           val e' = List.first(phiTranslate([v1opv2],p,block))
+										  val () = diagWithLabel predLabel (Layout.toString (VExp.layout e'))
+                                          val () = diagWithLabel label (Layout.toString (VExp.layout v1opv2))
                                       in                                          
                                         (let
+											val () = diagWithLabel predLabel (Layout.toString (List.layout VExp.layout (LabelInfo.availOut (getLabelInfo predLabel))))
                                             val e'' = findLeader(LabelInfo.availOut (getLabelInfo predLabel),e')
+											val () = diag "leader after phitranslate " (Layout.toString (List.layout VExp.layout (e'')))
                                          in
                                             case e'' of
                                             [] => (let
                                                       val () = put(predLabel,e')
+													  val () = diagWithLabel predLabel "putting the exp here"
+                                                      val () = diagWithLabel predLabel (Layout.toString (VExp.layout e'))
                                                       val () = all_same := false
                                                   in
                                                     ()
@@ -903,12 +909,15 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 let 
                                     val predLabel = Block.label p
                                     val e' = get(predLabel)
+									val () = diagWithLabel predLabel "working on preds: adding new statements"
                                     fun insertExp args oldExp= 
                                       let
                                           fun buildPrimArgs [] = []
                                             | buildPrimArgs (l::ls) = 
                                                 let
                                                     val leaderList = (leader (LabelInfo.availOut (getLabelInfo predLabel)) l)
+													val () = diag "exp" (Layout.toString (VExp.layoutValue (l)))
+													val () = diag "leader" (Layout.toString (List.layout VExp.layout (leaderList)))
                                                 in
                                                 case leaderList of
                                                   [VVar v] => v::(buildPrimArgs ls)
@@ -917,7 +926,11 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                                                   [VVar v] => v::(buildPrimArgs ls)
                                                                   | _ => (buildPrimArgs ls)
                                                                 )
-                                                  | _ => (buildPrimArgs ls)
+                                                  | _ => (
+                                                                 case (leader (!globalAvailOut) l) of
+                                                                  [VVar v] => v::(buildPrimArgs ls)
+                                                                  | _ => (buildPrimArgs ls)
+                                                                )
                                                 end
                                                 
                                           
@@ -929,6 +942,8 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                           then 
                                               let
                                                   val t = Var.newNoname ()
+												  val () = diag "adding statement " ""
+														  val () = diagWithLabel predLabel (Layout.toString (VExp.layout oldExp))
                                                   val _ = nextValNum StatementsAdded
                                                   val newExp = case oldExp of
                                                      VPrimApp {targs = targs, prim = prim, ...} =>
@@ -940,6 +955,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                                     | VVar v => Var v
                                                     | VConst c => Const c
                                                   val newStatement = Statement.T {exp = newExp, ty = v1opv2Type, var = (SOME t)}
+												  val () = diag "statement: " (Layout.toString (Statement.layout newStatement))
                                                   val () = List.push(LabelInfo.statementsGen' (getLabelInfo predLabel),newStatement)
                                                   val () = case (ValTable.lookupOrAdd oldExp v1opv2Type) of
                                                        {values=values,...} =>
@@ -961,6 +977,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                             | VConApp {args = args, ...} => insertExp args exp'
                                             | VSelect {tuple = tuple,...} => insertExp (Vector.new1 tuple) exp'
                                             | VTuple args => insertExp args exp'
+											| VConst _ => insertExp (Vector.new0 ()) exp'
                                             | _  => ()
                                             )
                                            | NONE => ()
@@ -1037,21 +1054,28 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                then
                (
                  let
-                 val reverseAnticIn = (List.rev (LabelInfo.anticIn labelInfoObj))
+                 val reverseAnticIn = ((LabelInfo.anticIn labelInfoObj))
+				 val () = diag "ANTIC_IN worklist inserts "  (Layout.toString (List.layout VExp.layout (reverseAnticIn)))
+				 val () = diag "KillGen worklist inserts "  (Layout.toString (List.layout Var.layout (LabelInfo.killGen labelInfoObj)))
                  val worklist = ref reverseAnticIn
+				 val () = diagWithLabel label " is merging block"
                  fun doWorkList () =
                    (
                      let
                      val e = List.pop(worklist)
+					 val () = diag "inside doworklist " (Layout.toString (VExp.layout e))
                      fun doMergingBlockExp e =
-                         case findLeader(domAvailOut,e) of
-                                [] => doMergingBlock block e new_stuff 
-                            | _   => () 
+                         (case findLeader(domAvailOut,e) of
+                                (*[] => doMergingBlock block e new_stuff 
+                            | _   => () *)
+							[] => let val () = diag "null exp: " (Layout.toString (VExp.layout e)) in doMergingBlock block e new_stuff end
+												| _   => let val () = diag "other exp: " (Layout.toString (VExp.layout e)) in () end)
                      val () = case e of
                                VPrimApp {...} => doMergingBlockExp e
                             |  VConApp {...} => doMergingBlockExp e
                             |  VSelect {...} => doMergingBlockExp e
                             |  VTuple _ => doMergingBlockExp e
+							|  VConst _ => doMergingBlockExp e
                             | _ => ()
                      in
                         if (List.length (!worklist))>0
@@ -1126,14 +1150,14 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                 val blocks = Vector.map(blocks, fn b => buildBlock b)
                                 val blocks = Vector.map(blocks, fn block => eliminate block)
                             in
-                                shrink(Function.new {args = args,
+                                shrink(shrink(Function.new {args = args,
                                               blocks = blocks,
                                               mayInline = mayInline,
                                               name = name,
                                               raises = raises,
                                               returns = returns,
                                               start = start}
-                                       )
+                                       ))
                             end)
         val sCount = nextValNum StatementsAdded
         val pCount = nextValNum PartialRedundancy
